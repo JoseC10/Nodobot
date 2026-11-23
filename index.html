@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NODOBOT · Plataforma inteligente de física aplicada</title>
+<style>
+:root{
+  --bar:#1a4574; --blue:#1d4a7a; --bg:#f1f5fa; --card:#ffffff; --ink:#101820;
+  --muted:#5b6b7c; --line:#dbe4ee; --soft:#e7eef7;
+  --font:"Segoe UI",Inter,system-ui,-apple-system,Roboto,Arial,sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:400 1rem/1.5 var(--font)}
+:focus-visible{outline:3px solid #f0a030;outline-offset:2px}
+button,input{font:inherit;color:inherit}
+
+/* Encabezado */
+.top{background:var(--bar);color:#fff}
+.top-in{max-width:960px;margin:0 auto;padding:1rem 1.25rem;display:flex;align-items:center;gap:.9rem}
+.top svg{width:34px;height:34px;flex:none}
+.top h1{margin:0;font-size:1.7rem;font-weight:700;line-height:1.1;letter-spacing:.01em}
+.top p{margin:.1rem 0 0;font-size:.8rem;text-transform:uppercase;letter-spacing:.03em;opacity:.92}
+
+main{max-width:960px;margin:0 auto;padding:1.5rem 1.25rem 3rem}
+h2.page{margin:0 0 1rem;font-size:1.5rem;font-weight:600;color:var(--blue)}
+.lead{margin:0 0 1.25rem;color:var(--muted);font-size:1.05rem}
+[data-view]{display:none}
+[data-view].on{display:block}
+
+/* Tarjetas del inicio */
+.hub{display:grid;grid-template-columns:1fr 1fr;gap:.9rem}
+.tile{background:var(--card);border:0;border-radius:16px;padding:1.1rem 1.2rem;text-align:left;cursor:pointer;box-shadow:0 1px 3px rgba(16,40,70,.08);display:block;width:100%}
+.tile:hover{box-shadow:0 4px 14px rgba(16,40,70,.14)}
+.tile svg{width:28px;height:28px;stroke:var(--blue);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;margin-bottom:.6rem}
+.tile strong{display:block;font-size:1.2rem;font-weight:600}
+.tile span{display:block;margin-top:.2rem;color:var(--muted);font-size:.9rem}
+
+/* Vistas internas */
+.back{background:none;border:0;color:var(--blue);font-weight:600;cursor:pointer;padding:.25rem 0;margin-bottom:.75rem}
+.panel{background:var(--card);border-radius:16px;padding:1.2rem;box-shadow:0 1px 3px rgba(16,40,70,.08)}
+.panel .sub{margin:0 0 1rem;color:var(--muted)}
+
+#chatlog{height:340px;overflow-y:auto;border:1px solid var(--line);border-radius:12px;padding:.75rem;display:flex;flex-direction:column;gap:.5rem;background:var(--bg)}
+.msg{max-width:85%;padding:.55rem .8rem;border-radius:14px;white-space:pre-wrap}
+.msg.bot{background:#fff;border:1px solid var(--line);align-self:flex-start}
+.msg.user{background:var(--bar);color:#fff;align-self:flex-end}
+#chatform{display:flex;gap:.5rem;margin-top:.75rem}
+#chatform input{flex:1;min-width:0;padding:.65rem .8rem;border:1px solid var(--line);border-radius:12px;background:#fff}
+.btn{background:var(--bar);color:#fff;border:0;border-radius:12px;padding:.65rem 1.1rem;font-weight:600;cursor:pointer}
+.btn:hover{background:var(--blue)}
+
+.files{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:.6rem}
+.files a{display:flex;flex-direction:column;padding:.7rem .8rem;border:1px solid var(--line);border-radius:12px;text-decoration:none;color:var(--ink);background:var(--bg)}
+.files a:hover{border-color:var(--blue);background:var(--soft)}
+.files strong{font-weight:600}
+.files span{font-size:.8rem;color:var(--muted)}
+.soon{padding:1.5rem;border:1px dashed var(--line);border-radius:12px;color:var(--muted);text-align:center}
+
+/* Animaciones */
+@keyframes rise{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes pop{from{opacity:0;transform:scale(.94) translateY(6px)}to{opacity:1;transform:none}}
+@keyframes dot{0%,80%,100%{opacity:.3;transform:translateY(0)}40%{opacity:1;transform:translateY(-3px)}}
+.top svg{animation:spin 24s linear infinite}
+[data-view].on{animation:fade .3s ease backwards}
+.tile{animation:rise .5s ease backwards;transition:transform .2s ease,box-shadow .2s ease}
+.tile:nth-child(1){animation-delay:.05s}
+.tile:nth-child(2){animation-delay:.12s}
+.tile:nth-child(3){animation-delay:.19s}
+.tile:nth-child(4){animation-delay:.26s}
+.tile:hover{transform:translateY(-4px)}
+.tile:active{transform:scale(.98)}
+.tile svg{transition:transform .25s ease}
+.tile:hover svg{transform:scale(1.12) rotate(-4deg)}
+.panel{animation:rise .4s ease backwards}
+.files a{animation:rise .4s ease backwards;transition:transform .18s ease,border-color .18s ease,background .18s ease}
+.files a:hover{transform:translateY(-3px)}
+.msg{animation:pop .25s ease backwards}
+.typing{display:flex;gap:5px;padding:.7rem .9rem}
+.typing i{width:7px;height:7px;border-radius:50%;background:var(--muted);animation:dot 1s infinite}
+.typing i:nth-child(2){animation-delay:.15s}
+.typing i:nth-child(3){animation-delay:.3s}
+.btn{transition:background .18s ease,transform .1s ease}
+.btn:active{transform:scale(.96)}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation:none!important;transition:none!important}
+}
+
+@media (max-width:460px){ .hub{grid-template-columns:1fr} }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="top-in">
+    <svg viewBox="0 0 32 32" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" aria-hidden="true">
+      <circle cx="16" cy="16" r="2.6" fill="#fff" stroke="none"/>
+      <ellipse cx="16" cy="16" rx="12" ry="5" transform="rotate(0 16 16)"/>
+      <ellipse cx="16" cy="16" rx="12" ry="5" transform="rotate(60 16 16)"/>
+      <ellipse cx="16" cy="16" rx="12" ry="5" transform="rotate(120 16 16)"/>
+    </svg>
+    <div>
+      <h1>NODOBOT</h1>
+      <p>Plataforma inteligente de física aplicada</p>
+    </div>
+  </div>
+</header>
+
+<main>
+
+  <!-- INICIO -->
+  <div data-view="inicio" class="on">
+    <h2 class="page">Centro de aprendizaje</h2>
+    <p class="lead">Bienvenido a tu espacio de aprendizaje de Física.</p>
+    <div class="hub">
+      <button class="tile" data-go="chat">
+        <svg viewBox="0 0 24 24"><rect x="4" y="8" width="16" height="11" rx="3"/><path d="M12 8V5M9.5 13.5v1M14.5 13.5v1"/><circle cx="12" cy="4" r="1"/></svg>
+        <strong>Nodobot IA</strong><span>ChatGPT, ejercicios e imágenes.</span>
+      </button>
+      <button class="tile" data-go="formulas">
+        <svg viewBox="0 0 24 24"><path d="M12 6.5C10.5 5.2 8 4.5 3.5 4.5v13c4.5 0 7 .7 8.5 2 1.5-1.3 4-2 8.5-2v-13c-4.5 0-7 .7-8.5 2zM12 6.5v13"/></svg>
+        <strong>Fórmulas</strong><span>Biblioteca de ecuaciones físicas.</span>
+      </button>
+      <button class="tile" data-go="analisis">
+        <svg viewBox="0 0 24 24"><path d="M3 21h18M5 17v-4M10 17V9M15 17v-6M20 17V6M4 8l5-4 4 3 6-4"/></svg>
+        <strong>Análisis experimental</strong><span>Datos, cálculos y gráficos.</span>
+      </button>
+      <button class="tile" data-go="diapositivas">
+        <svg viewBox="0 0 24 24"><rect x="3" y="3.5" width="18" height="11" rx="1.5"/><path d="M12 3.5V2M8 21l4-6.5 4 6.5"/></svg>
+        <strong>Diapositivas</strong><span>Material académico por semanas.</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- NODOBOT IA -->
+  <div data-view="chat">
+    <button class="back" data-go="inicio">← Volver al inicio</button>
+    <div class="panel">
+      <h2 class="page">Nodobot IA</h2>
+      <p class="sub">Pregunta sobre cualquier tema del curso.</p>
+      <div id="chatlog" role="log" aria-live="polite"></div>
+      <form id="chatform" autocomplete="off">
+        <input id="chatinput" type="text" placeholder="Escribe tu pregunta" aria-label="Tu pregunta">
+        <button class="btn" type="submit">Enviar</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- FÓRMULAS -->
+  <div data-view="formulas">
+    <button class="back" data-go="inicio">← Volver al inicio</button>
+    <div class="panel">
+      <h2 class="page">Fórmulas</h2>
+      <p class="sub">Descarga el formulario que necesites.</p>
+      <div class="files" id="forms"></div>
+    </div>
+  </div>
+
+  <!-- ANÁLISIS EXPERIMENTAL -->
+  <div data-view="analisis">
+    <button class="back" data-go="inicio">← Volver al inicio</button>
+    <div class="panel">
+      <h2 class="page">Análisis experimental</h2>
+      <p class="sub">Datos, cálculos y gráficos.</p>
+      <div class="soon">Esta sección estará disponible próximamente.</div>
+    </div>
+  </div>
+
+  <!-- DIAPOSITIVAS -->
+  <div data-view="diapositivas">
+    <button class="back" data-go="inicio">← Volver al inicio</button>
+    <div class="panel">
+      <h2 class="page">Diapositivas</h2>
+      <p class="sub">Descarga la presentación de la semana que necesites.</p>
+      <div class="files" id="slides"></div>
+    </div>
+  </div>
+
+</main>
+
+<script>
+/* ---------- NAVEGACIÓN ---------- */
+const views = [...document.querySelectorAll('[data-view]')];
+function show(name){
+  const ok = views.some(v=>v.dataset.view===name);
+  name = ok ? name : 'inicio';
+  views.forEach(v=>v.classList.toggle('on', v.dataset.view===name));
+  window.scrollTo(0,0);
+}
+document.addEventListener('click',e=>{
+  const b = e.target.closest('[data-go]');
+  if(!b) return;
+  location.hash = b.dataset.go === 'inicio' ? '' : b.dataset.go;
+  show(b.dataset.go);
+});
+window.addEventListener('hashchange',()=>show(location.hash.slice(1)));
+show(location.hash.slice(1));
+
+/* ---------- DIAPOSITIVAS ----------
+   Guarda los .pptx en la carpeta "diapositivas" junto a este archivo,
+   con sus nombres originales: "SEMANA 1.pptx" ... "SEMANA 15.pptx" (sin la 8).
+   Cuando tengan los temas reales, cambia los títulos del arreglo. */
+/* La semana 8 no se incluye porque es la semana del parcial. */
+const semanas = [1,2,3,4,5,6,7,9,10,11,12,13,14,15];
+const slides = document.getElementById('slides');
+semanas.forEach((n,i)=>{
+  const a = document.createElement('a');
+  a.href = `diapositivas/SEMANA%20${n}.pptx`;
+  a.setAttribute('download','');
+  a.innerHTML = `<strong>Semana ${n}</strong><span>Descargar .pptx</span>`;
+  a.style.animationDelay = `${i*35}ms`;
+  slides.appendChild(a);
+});
+
+/* ---------- FÓRMULAS (archivos descargables) ----------
+   Guarda los archivos en la carpeta "formularios" con los nombres
+   formulario-1.pdf, formulario-2.pdf, etc.
+   Cambia formExt si usarán otro formato y formTotal según la cantidad. */
+const formExt = 'pdf';
+const formTotal = 5;
+const forms = document.getElementById('forms');
+for(let i=1;i<=formTotal;i++){
+  const a = document.createElement('a');
+  a.href = `formularios/formulario-${i}.${formExt}`;
+  a.setAttribute('download','');
+  a.innerHTML = `<strong>Formulario ${i}</strong><span>Descargar .${formExt}</span>`;
+  a.style.animationDelay = `${(i-1)*35}ms`;
+  forms.appendChild(a);
+}
+
+/* ---------- CHATBOT ----------
+   Donny: reemplaza solo la función botReply(texto).
+   Debe devolver (o resolver con) el texto de la respuesta.
+   Si el bot usa una API con clave, la llamada debe pasar por un backend propio. */
+async function botReply(texto){
+  return 'El chatbot aún está en construcción. Pronto podré responder sobre los temas del curso.';
+}
+const log = document.getElementById('chatlog');
+function addMsg(text, who){
+  const d = document.createElement('div');
+  d.className = 'msg ' + who;
+  d.textContent = text;
+  log.appendChild(d);
+  log.scrollTop = log.scrollHeight;
+}
+addMsg('¡Hola! Soy Nodobot, el asistente del curso. ¿Qué tema quieres repasar?', 'bot');
+document.getElementById('chatform').addEventListener('submit', async e=>{
+  e.preventDefault();
+  const inp = document.getElementById('chatinput');
+  const q = inp.value.trim();
+  if(!q) return;
+  addMsg(q,'user'); inp.value='';
+  const t = document.createElement('div');
+  t.className = 'msg bot typing';
+  t.innerHTML = '<i></i><i></i><i></i>';
+  log.appendChild(t); log.scrollTop = log.scrollHeight;
+  try{
+    const [r] = await Promise.all([botReply(q), new Promise(ok=>setTimeout(ok,600))]);
+    t.remove(); addMsg(r,'bot');
+  }catch(err){
+    t.remove(); addMsg('No pude responder en este momento. Intenta de nuevo.','bot');
+  }
+});
+</script>
+</body>
+</html>
