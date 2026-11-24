@@ -199,7 +199,7 @@ window.addEventListener('hashchange',()=>show(location.hash.slice(1)));
 show(location.hash.slice(1));
 
 /* ---------- DIAPOSITIVAS ----------
-   Guarda los .pptx en la carpeta "diapositivas" junto a este archivo,
+   Los .pptx están en la misma carpeta que este archivo (la raíz del repositorio),
    con sus nombres originales: "SEMANA 1.pptx" ... "SEMANA 15.pptx" (sin la 8).
    Cuando tengan los temas reales, cambia los títulos del arreglo. */
 /* La semana 8 no se incluye porque es la semana del parcial. */
@@ -207,7 +207,7 @@ const semanas = [1,2,3,4,5,6,7,9,10,11,12,13,14,15];
 const slides = document.getElementById('slides');
 semanas.forEach((n,i)=>{
   const a = document.createElement('a');
-  a.href = `diapositivas/SEMANA%20${n}.pptx`;
+  a.href = `SEMANA%20${n}.pptx`;
   a.setAttribute('download','');
   a.innerHTML = `<strong>Semana ${n}</strong><span>Descargar .pptx</span>`;
   a.style.animationDelay = `${i*35}ms`;
