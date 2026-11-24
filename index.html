@@ -46,9 +46,38 @@ h2.page{margin:0 0 1rem;font-size:1.5rem;font-weight:600;color:var(--blue)}
 .msg.bot{background:#fff;border:1px solid var(--line);align-self:flex-start}
 .msg.user{background:var(--bar);color:#fff;align-self:flex-end}
 #chatform{display:flex;gap:.5rem;margin-top:.75rem}
-#chatform input{flex:1;min-width:0;padding:.65rem .8rem;border:1px solid var(--line);border-radius:12px;background:#fff}
+#chatform input,#aform input{flex:1;min-width:0;padding:.65rem .8rem;border:1px solid var(--line);border-radius:12px;background:#fff}
+#aform{display:flex;gap:.5rem;margin-top:.75rem}
 .btn{background:var(--bar);color:#fff;border:0;border-radius:12px;padding:.65rem 1.1rem;font-weight:600;cursor:pointer}
 .btn:hover{background:var(--blue)}
+
+/* Análisis experimental */
+.chips{display:flex;flex-wrap:wrap;gap:.4rem;margin:0 0 .75rem}
+.chip{background:var(--soft);border:1px solid var(--line);color:var(--blue);border-radius:999px;padding:.3rem .85rem;font-size:.85rem;font-weight:600;cursor:pointer;transition:background .18s ease}
+.chip:hover{background:#d5e3f3}
+#alog{position:relative;height:min(640px,72vh);overflow-y:auto;border:1px solid var(--line);border-radius:12px;padding:.75rem;display:flex;flex-direction:column;gap:.6rem;background:var(--bg)}
+.msg.rich{white-space:normal;max-width:100%;width:100%;padding:.9rem 1rem}
+.rich h3{margin:0 0 .4rem;font-size:1.15rem;color:var(--blue)}
+.rich h4{margin:1rem 0 .35rem;font-size:.78rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+.rich ol{margin:0;padding-left:1.25rem}
+.rich li{margin:.25rem 0}
+.rich table{border-collapse:collapse;width:100%}
+.rich td{padding:.25rem .4rem;border-bottom:1px solid var(--line)}
+.rich td:last-child{text-align:right;font-variant-numeric:tabular-nums}
+.answer{background:var(--soft);border-radius:10px;padding:.55rem .85rem}
+.answer div{display:flex;justify-content:space-between;gap:1rem;padding:.2rem 0}
+.answer b{font-variant-numeric:tabular-nums;color:var(--blue)}
+.charts{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(280px,100%),1fr));gap:.8rem}
+figure.ch{margin:0;background:#fff;border:1px solid var(--line);border-radius:12px;padding:.6rem .6rem .5rem}
+figure.ch .t{margin:0 0 .15rem;font-weight:600;font-size:.9rem}
+figure.ch svg{width:100%;height:auto;display:block}
+.ch .gl{stroke:var(--line);stroke-width:1}
+.ch .zl{stroke:#9fb0c3;stroke-width:1.2}
+.ch .ax{fill:var(--muted);font-size:11px}
+.ch .al{fill:var(--ink);font-size:12px}
+.leg{display:flex;flex-wrap:wrap;gap:.15rem .9rem;font-size:.8rem;color:var(--muted);margin-top:.2rem}
+.leg i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:.35rem}
+.note{margin:.7rem 0 0;color:var(--muted);font-size:.85rem}
 
 .files{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:.6rem}
 .files a{display:flex;flex-direction:column;padding:.7rem .8rem;border:1px solid var(--line);border-radius:12px;text-decoration:none;color:var(--ink);background:var(--bg)}
@@ -165,8 +194,13 @@ h2.page{margin:0 0 1rem;font-size:1.5rem;font-weight:600;color:var(--blue)}
     <button class="back" data-go="inicio">← Volver al inicio</button>
     <div class="panel">
       <h2 class="page">Análisis experimental</h2>
-      <p class="sub">Datos, cálculos y gráficos.</p>
-      <div class="soon">Esta sección estará disponible próximamente.</div>
+      <p class="sub">Describe un problema o pega tus datos: Nodobot lo resuelve paso a paso y dibuja los gráficos.</p>
+      <div class="chips" id="chips" aria-label="Ejemplos"></div>
+      <div id="alog" role="log" aria-live="polite"></div>
+      <form id="aform" autocomplete="off">
+        <input id="ainput" type="text" placeholder="Escribe el problema o pega tus datos (x: 1, 2, 3; y: 2, 4, 6)" aria-label="Problema o datos">
+        <button class="btn" type="submit">Resolver</button>
+      </form>
     </div>
   </div>
 
@@ -297,6 +331,363 @@ document.getElementById('chatform').addEventListener('submit', async e=>{
   }catch(err){
     t.remove(); addMsg('No pude responder en este momento. Intenta de nuevo.','bot');
   }
+});
+
+/* ---------- ANÁLISIS EXPERIMENTAL ----------
+   Resuelve el problema en el navegador (sin servidor) y dibuja las gráficas en SVG.
+   Tipos: tiro parabólico, lanzamiento vertical / caída libre, MRUA, péndulo simple,
+   masa-resorte (MAS) y regresión lineal de datos experimentales.
+   Para usar un LLM propio, reemplaza solo analizar(): debe devolver un objeto con la
+   misma forma que los solucionadores (titulo, datos, pasos, respuesta, graficos, notas)
+   o { error: '...' }. La clave de la API debe quedar en un backend propio. */
+const G = 9.81;
+const nf = (x,d=4)=> Number.isFinite(x) ? String(Number(x.toPrecision(d))) : '—';
+const r1 = x=> x.toFixed(1);
+const lin = (a,b,n)=> Array.from({length:n},(_,i)=> a+(b-a)*i/(n-1));
+const toRad = d=> d*Math.PI/180, toDeg = r=> r*180/Math.PI;
+const COLORES = ['#1d4a7a','#d9622b','#2a9d8f','#8a5cc2'];
+
+/* Lee cantidades con unidades del enunciado */
+function leerNumeros(t){
+  const n = {v:[],a:[],m:[],cm:[],s:[],deg:[],kg:[],k:[]};
+  const re = /(-?\d+(?:[.,]\d+)?)\s*(m\/s(?:²|\^2|2)|m\/s|n\/m|kg|cm|metros?|m(?![\/a-z])|[°º]|grados?|segundos?|s(?![a-z]))/gi;
+  let r;
+  while((r = re.exec(t))){
+    const x = parseFloat(r[1].replace(',','.')), u = r[2].toLowerCase();
+    if(u.startsWith('m/s')) (u.length>3 ? n.a : n.v).push(x);
+    else if(u==='n/m') n.k.push(x);
+    else if(u==='kg') n.kg.push(x);
+    else if(u==='cm') n.cm.push(x);
+    else if(u==='°'||u==='º'||u.startsWith('grado')) n.deg.push(x);
+    else if(u==='s'||u.startsWith('seg')) n.s.push(x);
+    else n.m.push(x);
+  }
+  return n;
+}
+
+function detectar(s){
+  if(/(^|[^a-z])x\s*[:=]/.test(s) && /(^|[^a-z])y\s*[:=]/.test(s)) return 'datos';
+  if(/p[eé]ndulo/.test(s)) return 'pendulo';
+  if(/resorte|hooke|oscilador/.test(s)) return 'resorte';
+  if(/proyectil|parab[oó]lic|oblicu|[°º]|grados|[aá]ngulo|dispara|patea/.test(s)) return 'proyectil';
+  if(/ca[ií]da libre|deja caer|suelta|hacia arriba|hacia abajo|verticalmente|edificio|torre|acantilado/.test(s)) return 'vertical';
+  if(/aceler|reposo|auto|veh[ií]culo|m[oó]vil|tren|frena|mrua|moto|ciclista|detiene/.test(s)) return 'mrua';
+  return null;
+}
+
+/* ----- Solucionadores: cada uno devuelve { titulo, datos, pasos, respuesta, graficos, notas } ----- */
+function sVertical(n, low){
+  if(!n.v.length && !n.m.length) return {error:'Indica la velocidad inicial y/o la altura, por ejemplo: "Se lanza una pelota hacia arriba a 18 m/s desde 2 m de altura".'};
+  const g = n.a.length ? Math.abs(n.a[0]) : G;
+  let v0 = n.v.length ? n.v[0] : 0;
+  if(/hacia abajo/.test(low)) v0 = -Math.abs(v0);
+  const y0 = n.m.length ? n.m[0] : 0;
+  const tf = (v0 + Math.sqrt(v0*v0 + 2*g*y0))/g;
+  if(!(tf>0)) return {error:'Con esos datos el cuerpo no se mueve: agrega una altura inicial o una velocidad hacia arriba.'};
+  const sube = v0>0, tm = sube ? v0/g : 0, hm = y0 + (sube ? v0*v0/(2*g) : 0), vf = v0 - g*tf;
+  const ts = lin(0, tf, 90);
+  const pasos = ['Posición: y(t) = y₀ + v₀t − ½gt²;  velocidad: v(t) = v₀ − gt.'];
+  if(sube) pasos.push(`Altura máxima (v = 0): t = v₀/g = ${nf(v0)}/${nf(g)} = ${nf(tm)} s  →  y<sub>máx</sub> = y₀ + v₀²/(2g) = ${nf(hm)} m.`);
+  pasos.push(`Tiempo de vuelo (y = 0): t = [v₀ + √(v₀² + 2gy₀)]/g = ${nf(tf)} s.`);
+  pasos.push(`Velocidad al llegar al suelo: v = v₀ − g·t = ${nf(vf)} m/s (el signo negativo indica que baja).`);
+  const respuesta = [['Tiempo de vuelo', nf(tf), 's']];
+  if(sube) respuesta.push(['Altura máxima', nf(hm), 'm'], ['Tiempo en la altura máxima', nf(tm), 's']);
+  respuesta.push(['Velocidad de impacto', nf(vf), 'm/s']);
+  return {
+    titulo: v0===0 ? 'Caída libre' : 'Lanzamiento vertical',
+    datos: [['Velocidad inicial v₀', nf(v0), 'm/s'], ['Altura inicial y₀', nf(y0), 'm'], ['Gravedad g', nf(g), 'm/s²']],
+    pasos, respuesta,
+    graficos: [
+      {titulo:'Altura en función del tiempo', xlabel:'t (s)', ylabel:'y (m)', series:[{name:'y(t)', pts: ts.map(t=>[t, y0+v0*t-.5*g*t*t])}]},
+      {titulo:'Velocidad en función del tiempo', xlabel:'t (s)', ylabel:'v (m/s)', series:[{name:'v(t)', pts: ts.map(t=>[t, v0-g*t])}]}
+    ],
+    notas: ['Se desprecia la resistencia del aire.']
+  };
+}
+
+function sProyectil(n){
+  if(!n.v.length || !n.deg.length) return {error:'Para un tiro parabólico indica la velocidad y el ángulo, por ejemplo: "Un proyectil sale a 30 m/s con un ángulo de 40°".'};
+  const g = n.a.length ? Math.abs(n.a[0]) : G, v0 = n.v[0], th = n.deg[0], y0 = n.m.length ? n.m[0] : 0;
+  const vx = v0*Math.cos(toRad(th)), vy0 = v0*Math.sin(toRad(th));
+  const tf = (vy0 + Math.sqrt(vy0*vy0 + 2*g*y0))/g, R = vx*tf;
+  const tm = Math.max(vy0,0)/g, hm = y0 + (vy0>0 ? vy0*vy0/(2*g) : 0);
+  const vyf = vy0 - g*tf, vimp = Math.hypot(vx, vyf), aimp = toDeg(Math.atan2(Math.abs(vyf), vx));
+  const ts = lin(0, tf, 90);
+  return {
+    titulo: 'Tiro parabólico',
+    datos: [['Velocidad inicial v₀', nf(v0), 'm/s'], ['Ángulo θ', nf(th), '°'], ['Altura inicial y₀', nf(y0), 'm'], ['Gravedad g', nf(g), 'm/s²']],
+    pasos: [
+      `Componentes: vₓ = v₀cosθ = ${nf(vx)} m/s;  v<sub>y0</sub> = v₀senθ = ${nf(vy0)} m/s.`,
+      `Tiempo de vuelo (y = 0): t = [v<sub>y0</sub> + √(v<sub>y0</sub>² + 2gy₀)]/g = ${nf(tf)} s.`,
+      `Alcance: R = vₓ·t = ${nf(vx)}·${nf(tf)} = ${nf(R)} m.`,
+      `Altura máxima: y<sub>máx</sub> = y₀ + v<sub>y0</sub>²/(2g) = ${nf(hm)} m, alcanzada en t = v<sub>y0</sub>/g = ${nf(tm)} s.`,
+      `Al impacto: v<sub>y</sub> = v<sub>y0</sub> − g·t = ${nf(vyf)} m/s, así que |v| = √(vₓ² + v<sub>y</sub>²) = ${nf(vimp)} m/s.`
+    ],
+    respuesta: [['Alcance horizontal', nf(R), 'm'], ['Altura máxima', nf(hm), 'm'], ['Tiempo de vuelo', nf(tf), 's'], ['Rapidez de impacto', nf(vimp), 'm/s'], ['Ángulo de impacto', nf(aimp), '° bajo la horizontal']],
+    graficos: [
+      {titulo:'Trayectoria', xlabel:'x (m)', ylabel:'y (m)', series:[
+        {name:'Trayectoria', pts: ts.map(t=>[vx*t, y0+vy0*t-.5*g*t*t])},
+        {name:'Altura máxima', pts:[[vx*tm, hm]], line:false, dots:true},
+        {name:'Impacto', pts:[[R, 0]], line:false, dots:true}]},
+      {titulo:'Componentes de la velocidad', xlabel:'t (s)', ylabel:'v (m/s)', series:[
+        {name:'vₓ (constante)', pts: ts.map(t=>[t, vx])},
+        {name:'v_y(t)', pts: ts.map(t=>[t, vy0-g*t])}]}
+    ],
+    notas: ['Se desprecia la resistencia del aire.']
+  };
+}
+
+function sMrua(n, low){
+  const K = {};
+  if(/reposo/.test(low)){ K.v0 = 0; if(n.v.length) K.vf = n.v[0]; }
+  else if(/deten|se para|hasta parar/.test(low)){ K.vf = 0; if(n.v.length) K.v0 = n.v[0]; }
+  else { if(n.v.length) K.v0 = n.v[0]; if(n.v.length>1) K.vf = n.v[1]; }
+  if(n.a.length){ K.a = /frena|desacel/.test(low) ? -Math.abs(n.a[0]) : n.a[0]; }
+  if(n.s.length) K.t = n.s[0];
+  if(n.m.length) K.x = n.m[0];
+  const dado = new Set(Object.keys(K)), has = k=> K[k]!==undefined;
+  for(let it=0; it<6; it++){
+    if(has('a')&&has('t')&&has('v0')){ K.vf ??= K.v0+K.a*K.t; K.x ??= K.v0*K.t+.5*K.a*K.t*K.t; }
+    if(has('v0')&&has('vf')&&has('t')&&K.t!==0){ K.a ??= (K.vf-K.v0)/K.t; K.x ??= (K.v0+K.vf)/2*K.t; }
+    if(has('v0')&&has('vf')&&has('a')&&K.a!==0){ K.t ??= (K.vf-K.v0)/K.a; K.x ??= (K.vf*K.vf-K.v0*K.v0)/(2*K.a); }
+    if(has('v0')&&has('vf')&&has('x')&&K.v0+K.vf!==0){ K.t ??= 2*K.x/(K.v0+K.vf); K.a ??= (K.vf*K.vf-K.v0*K.v0)/(2*K.x); }
+    if(has('vf')&&has('a')&&has('t')){ K.v0 ??= K.vf-K.a*K.t; }
+    if(has('v0')&&has('a')&&has('x')&&!has('t')){
+      if(K.a===0){ if(K.v0!==0) K.t = K.x/K.v0; }
+      else{
+        const d = K.v0*K.v0+2*K.a*K.x;
+        if(d>=0){
+          const raices = [(-K.v0+Math.sqrt(d))/K.a, (-K.v0-Math.sqrt(d))/K.a].filter(z=>z>=0);
+          if(raices.length) K.t = Math.min(...raices);
+        }
+      }
+    }
+  }
+  if(!['v0','vf','a','t','x'].every(has) || !(K.t>0)) return {error:'No alcanzan los datos. Dame al menos tres de estas cantidades: velocidad inicial, velocidad final, aceleración, tiempo y distancia. Ejemplo: "Un auto parte del reposo con aceleración de 2.5 m/s² durante 12 s".'};
+  const etiqueta = {v0:['Velocidad inicial v₀','m/s'], vf:['Velocidad final v','m/s'], a:['Aceleración a','m/s²'], t:['Tiempo t','s'], x:['Distancia x','m']};
+  const orden = ['v0','vf','a','t','x'];
+  const calculadas = orden.filter(k=>!dado.has(k));
+  const ts = lin(0, K.t, 60);
+  const notas = ['Aceleración constante (MRUA).'];
+  if(K.a*K.v0<0 && -K.v0/K.a < K.t) notas.push(`La velocidad cambia de sentido en t = ${nf(-K.v0/K.a)} s; la distancia x es el desplazamiento neto, no el recorrido total.`);
+  return {
+    titulo: 'Movimiento rectilíneo uniformemente acelerado',
+    datos: orden.filter(k=>dado.has(k)).map(k=>[etiqueta[k][0], nf(K[k]), etiqueta[k][1]]),
+    pasos: [
+      'Ecuaciones: v = v₀ + at;  x = v₀t + ½at²;  v² = v₀² + 2ax.',
+      `Se despejan ${calculadas.length ? calculadas.map(k=>etiqueta[k][0].split(' ').pop()).join(', ') : 'las incógnitas'} con las ecuaciones que usan los datos conocidos.`,
+      `Comprobación: v₀ + a·t = ${nf(K.v0)} + (${nf(K.a)})(${nf(K.t)}) = ${nf(K.v0+K.a*K.t)} m/s  y  v₀t + ½at² = ${nf(K.v0*K.t+.5*K.a*K.t*K.t)} m.`
+    ],
+    respuesta: (calculadas.length ? calculadas : orden).map(k=>[etiqueta[k][0], nf(K[k]), etiqueta[k][1]]),
+    graficos: [
+      {titulo:'Posición en función del tiempo', xlabel:'t (s)', ylabel:'x (m)', series:[{name:'x(t)', pts: ts.map(t=>[t, K.v0*t+.5*K.a*t*t])}]},
+      {titulo:'Velocidad en función del tiempo', xlabel:'t (s)', ylabel:'v (m/s)', series:[{name:'v(t)', pts: ts.map(t=>[t, K.v0+K.a*t])}]}
+    ],
+    notas
+  };
+}
+
+function sPendulo(n){
+  const L = n.m.length ? n.m[0] : n.cm.length ? n.cm[0]/100 : null;
+  if(!(L>0)) return {error:'Indica la longitud del péndulo, por ejemplo: "Péndulo simple de 1.2 m con amplitud de 8°".'};
+  const g = n.a.length ? Math.abs(n.a[0]) : G, th = n.deg.length ? n.deg[0] : 10, th0 = toRad(th);
+  const w = Math.sqrt(g/L), T = 2*Math.PI/w, Tc = T*(1+th0*th0/16), vmax = L*w*th0;
+  const ts = lin(0, 2*T, 140);
+  const notas = ['Aproximación de ángulos pequeños: θ(t) = θ₀·cos(ωt).'];
+  if(!n.deg.length) notas.push('No indicaste la amplitud; supuse θ₀ = 10°.');
+  if(th>15) notas.push('Con amplitudes mayores a unos 15° la aproximación pierde precisión; usa la corrección del período.');
+  return {
+    titulo: 'Péndulo simple',
+    datos: [['Longitud L', nf(L), 'm'], ['Amplitud θ₀', nf(th), '°'], ['Gravedad g', nf(g), 'm/s²']],
+    pasos: [
+      `Frecuencia angular: ω = √(g/L) = √(${nf(g)}/${nf(L)}) = ${nf(w)} rad/s.`,
+      `Período: T = 2π√(L/g) = ${nf(T)} s;  frecuencia: f = 1/T = ${nf(1/T)} Hz.`,
+      `Corrección por amplitud finita: T ≈ T₀(1 + θ₀²/16) = ${nf(Tc)} s.`,
+      `Rapidez máxima en el punto más bajo: v<sub>máx</sub> = L·ω·θ₀ = ${nf(vmax)} m/s.`
+    ],
+    respuesta: [['Período T', nf(T), 's'], ['Frecuencia f', nf(1/T), 'Hz'], ['Frecuencia angular ω', nf(w), 'rad/s'], ['Período corregido', nf(Tc), 's'], ['Rapidez máxima', nf(vmax), 'm/s']],
+    graficos: [
+      {titulo:'Ángulo en función del tiempo', xlabel:'t (s)', ylabel:'θ (°)', series:[{name:'θ(t)', pts: ts.map(t=>[t, th*Math.cos(w*t)])}]},
+      {titulo:'Rapidez de la masa', xlabel:'t (s)', ylabel:'v (m/s)', series:[{name:'v(t)', pts: ts.map(t=>[t, -vmax*Math.sin(w*t)])}]}
+    ],
+    notas
+  };
+}
+
+function sResorte(n){
+  if(!n.kg.length || !n.k.length) return {error:'Indica la masa y la constante del resorte, por ejemplo: "Masa de 0.5 kg en un resorte de 20 N/m con amplitud de 8 cm".'};
+  const m = n.kg[0], k = n.k[0];
+  const A = n.cm.length ? n.cm[0]/100 : n.m.length ? n.m[0] : 0.1;
+  const w = Math.sqrt(k/m), T = 2*Math.PI/w, E = .5*k*A*A;
+  const ts = lin(0, 2*T, 140);
+  const notas = ['Sin fricción: la energía mecánica total se conserva.'];
+  if(!n.cm.length && !n.m.length) notas.push('No indicaste la amplitud; supuse A = 0.10 m.');
+  return {
+    titulo: 'Sistema masa-resorte (MAS)',
+    datos: [['Masa m', nf(m), 'kg'], ['Constante k', nf(k), 'N/m'], ['Amplitud A', nf(A), 'm']],
+    pasos: [
+      `Frecuencia angular: ω = √(k/m) = √(${nf(k)}/${nf(m)}) = ${nf(w)} rad/s.`,
+      `Período: T = 2π/ω = ${nf(T)} s;  frecuencia: f = ${nf(1/T)} Hz.`,
+      `Velocidad máxima: v<sub>máx</sub> = Aω = ${nf(A*w)} m/s;  aceleración máxima: a<sub>máx</sub> = Aω² = ${nf(A*w*w)} m/s².`,
+      `Energía total: E = ½kA² = ${nf(E)} J.`
+    ],
+    respuesta: [['Período T', nf(T), 's'], ['Frecuencia f', nf(1/T), 'Hz'], ['Frecuencia angular ω', nf(w), 'rad/s'], ['Velocidad máxima', nf(A*w), 'm/s'], ['Energía total', nf(E), 'J']],
+    graficos: [
+      {titulo:'Posición en función del tiempo', xlabel:'t (s)', ylabel:'x (m)', series:[{name:'x(t)', pts: ts.map(t=>[t, A*Math.cos(w*t)])}]},
+      {titulo:'Energía en función del tiempo', xlabel:'t (s)', ylabel:'E (J)', series:[
+        {name:'Cinética', pts: ts.map(t=>[t, .5*m*Math.pow(A*w*Math.sin(w*t),2)])},
+        {name:'Potencial', pts: ts.map(t=>[t, .5*k*Math.pow(A*Math.cos(w*t),2)])},
+        {name:'Total', pts: ts.map(t=>[t, E])}]}
+    ],
+    notas
+  };
+}
+
+function sDatos(n, low, texto){
+  const re = /(^|[^a-zA-Z])([xyXY])\s*[:=]/g, marcas = [];
+  let r;
+  while((r = re.exec(texto))) marcas.push({v:r[2].toLowerCase(), ini:r.index+r[0].length, etiq:r.index+r[1].length});
+  const lista = v=>{
+    const i = marcas.findIndex(m=>m.v===v);
+    if(i<0) return [];
+    const fin = i+1<marcas.length ? marcas[i+1].etiq : texto.length;
+    const seg = texto.slice(marcas[i].ini, fin).split(/\.\s+[A-Za-zÁ-ú]/)[0];
+    return (seg.match(/-?\d+(?:\.\d+)?/g) || []).map(Number);
+  };
+  const xs = lista('x'), ys = lista('y');
+  if(xs.length!==ys.length || xs.length<3) return {error:'Pega al menos 3 pares de datos con la misma cantidad de valores en x y en y, usando punto decimal. Ejemplo: "x: 1, 2, 3, 4; y: 2.1, 3.9, 6.2, 7.8".'};
+  const N = xs.length, mx = xs.reduce((a,b)=>a+b)/N, my = ys.reduce((a,b)=>a+b)/N;
+  const sxx = xs.reduce((a,x)=>a+(x-mx)**2,0), sxy = xs.reduce((a,x,i)=>a+(x-mx)*(ys[i]-my),0);
+  if(sxx===0) return {error:'Todos los valores de x son iguales; no se puede ajustar una recta.'};
+  const m = sxy/sxx, b = my-m*mx;
+  const res = ys.map((y,i)=>y-(m*xs[i]+b));
+  const ssr = res.reduce((a,e)=>a+e*e,0), sst = ys.reduce((a,y)=>a+(y-my)**2,0);
+  const R2 = sst===0 ? 1 : 1-ssr/sst, sy = Math.sqrt(ssr/(N-2));
+  const sm = sy/Math.sqrt(sxx), sb = sy*Math.sqrt(1/N + mx*mx/sxx);
+  const orden = xs.map((x,i)=>[x,ys[i]]).sort((p,q)=>p[0]-q[0]);
+  const x0 = orden[0][0], x1 = orden[N-1][0];
+  return {
+    titulo: 'Regresión lineal de datos experimentales',
+    datos: [['Número de puntos N', String(N), ''], ['Media de x', nf(mx), ''], ['Media de y', nf(my), '']],
+    pasos: [
+      'Mínimos cuadrados: m = Σ(xᵢ − x̄)(yᵢ − ȳ) / Σ(xᵢ − x̄)²;  b = ȳ − m·x̄.',
+      `Pendiente: m = ${nf(sxy)}/${nf(sxx)} = ${nf(m)};  intercepto: b = ${nf(my)} − (${nf(m)})(${nf(mx)}) = ${nf(b)}.`,
+      `Dispersión de los residuos: s_y = √(Σeᵢ²/(N−2)) = ${nf(sy)};  incertidumbres: σ_m = s_y/√Σ(xᵢ−x̄)² = ${nf(sm)},  σ_b = ${nf(sb)}.`,
+      `Calidad del ajuste: R² = 1 − SS<sub>res</sub>/SS<sub>tot</sub> = ${nf(R2,5)}.`
+    ],
+    respuesta: [['Ecuación ajustada', `y = ${nf(m)}·x ${b<0?'−':'+'} ${nf(Math.abs(b))}`, ''], ['Pendiente m', `${nf(m)} ± ${nf(sm,2)}`, ''], ['Intercepto b', `${nf(b)} ± ${nf(sb,2)}`, ''], ['Coeficiente R²', nf(R2,5), '']],
+    graficos: [
+      {titulo:'Datos y recta de ajuste', xlabel:'x', ylabel:'y', series:[
+        {name:'Datos', pts: orden, line:false, dots:true},
+        {name:'Ajuste lineal', pts:[[x0, m*x0+b],[x1, m*x1+b]]}]},
+      {titulo:'Residuos del ajuste', xlabel:'x', ylabel:'y − ŷ', series:[{name:'Residuos', pts: xs.map((x,i)=>[x,res[i]]), line:false, dots:true}]}
+    ],
+    notas: ['Si los residuos muestran una curva y no se reparten al azar, un modelo lineal puede no ser el adecuado.']
+  };
+}
+
+function resolverLocal(texto){
+  const low = texto.toLowerCase(), n = leerNumeros(texto);
+  const f = {datos:sDatos, pendulo:sPendulo, resorte:sResorte, proyectil:sProyectil, vertical:sVertical, mrua:sMrua}[detectar(low)];
+  if(!f) return {error:'No reconocí el tipo de problema. Prueba con tiro parabólico, lanzamiento vertical o caída libre, MRUA (un auto que acelera), péndulo simple, masa-resorte, o pega datos como "x: 1, 2, 3; y: 2, 4, 6".'};
+  return f(n, low, texto);
+}
+
+/* Punto de conexión: cambia solo esta función para usar un backend/LLM propio.
+   Ejemplo: const r = await fetch('/api/analisis',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({texto})}); return r.json(); */
+async function analizar(texto){
+  return resolverLocal(texto);
+}
+
+/* ----- Gráficos SVG ----- */
+function marcas(min, max, cuantas){
+  if(min===max){ const p = Math.abs(min)*.1 || 1; min -= p; max += p; }
+  const paso0 = (max-min)/cuantas, mag = Math.pow(10, Math.floor(Math.log10(paso0))), norm = paso0/mag;
+  const paso = (norm<1.5 ? 1 : norm<3 ? 2 : norm<7 ? 5 : 10)*mag;
+  const lo = Math.floor(min/paso+1e-9)*paso, hi = Math.ceil(max/paso-1e-9)*paso, t = [];
+  for(let v=lo; v<=hi+paso/2; v+=paso) t.push(Math.abs(v)<paso*1e-6 ? 0 : Number(v.toPrecision(12)));
+  return {lo, hi, t};
+}
+
+function graficoSVG(c){
+  const W=420, H=270, L=56, R=14, T=12, B=46;
+  const pts = c.series.flatMap(s=>s.pts);
+  const X = marcas(Math.min(...pts.map(p=>p[0])), Math.max(...pts.map(p=>p[0])), 5);
+  const Y = marcas(Math.min(...pts.map(p=>p[1])), Math.max(...pts.map(p=>p[1])), 5);
+  const sx = x=> L+(x-X.lo)/(X.hi-X.lo)*(W-L-R), sy = y=> H-B-(y-Y.lo)/(Y.hi-Y.lo)*(H-B-T);
+  let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${c.titulo}">`;
+  Y.t.forEach(v=>{ s += `<line class="gl" x1="${L}" x2="${W-R}" y1="${r1(sy(v))}" y2="${r1(sy(v))}"/><text class="ax" x="${L-6}" y="${r1(sy(v)+4)}" text-anchor="end">${nf(v,3)}</text>`; });
+  X.t.forEach(v=>{ s += `<line class="gl" x1="${r1(sx(v))}" x2="${r1(sx(v))}" y1="${T}" y2="${H-B}"/><text class="ax" x="${r1(sx(v))}" y="${H-B+16}" text-anchor="middle">${nf(v,3)}</text>`; });
+  if(Y.lo<0 && Y.hi>0) s += `<line class="zl" x1="${L}" x2="${W-R}" y1="${r1(sy(0))}" y2="${r1(sy(0))}"/>`;
+  if(X.lo<0 && X.hi>0) s += `<line class="zl" x1="${r1(sx(0))}" x2="${r1(sx(0))}" y1="${T}" y2="${H-B}"/>`;
+  c.series.forEach((se,i)=>{
+    const col = COLORES[i%COLORES.length];
+    if(se.line!==false && se.pts.length>1)
+      s += `<path d="${se.pts.map((p,j)=>(j?'L':'M')+r1(sx(p[0]))+' '+r1(sy(p[1]))).join('')}" fill="none" stroke="${col}" stroke-width="2.2" stroke-linejoin="round"/>`;
+    if(se.dots) se.pts.forEach(p=>{ s += `<circle cx="${r1(sx(p[0]))}" cy="${r1(sy(p[1]))}" r="4.5" fill="${col}" stroke="#fff" stroke-width="1.5"><title>${c.xlabel.split(' ')[0]} = ${nf(p[0],4)}; ${c.ylabel.split(' ')[0]} = ${nf(p[1],4)}</title></circle>`; });
+  });
+  s += `<text class="al" x="${(L+W-R)/2}" y="${H-6}" text-anchor="middle">${c.xlabel}</text>`;
+  s += `<text class="al" transform="translate(13 ${(T+H-B)/2}) rotate(-90)" text-anchor="middle">${c.ylabel}</text></svg>`;
+  return s;
+}
+
+const figura = c => `<figure class="ch"><p class="t">${c.titulo}</p>${graficoSVG(c)}${c.series.length>1 ? `<div class="leg">${c.series.map((se,i)=>`<span><i style="background:${COLORES[i%COLORES.length]}"></i>${se.name}</span>`).join('')}</div>` : ''}</figure>`;
+
+function htmlResultado(r){
+  if(r.error) return `<p>${r.error}</p>`;
+  const fila = d=> `<tr><td>${d[0]}</td><td>${d[1]} ${d[2]||''}</td></tr>`;
+  return `<h3>${r.titulo}</h3>`
+    + `<h4>Datos</h4><table>${r.datos.map(fila).join('')}</table>`
+    + `<h4>Procedimiento</h4><ol>${r.pasos.map(p=>`<li>${p}</li>`).join('')}</ol>`
+    + `<h4>Respuesta</h4><div class="answer">${r.respuesta.map(d=>`<div><span>${d[0]}</span><b>${d[1]} ${d[2]||''}</b></div>`).join('')}</div>`
+    + `<h4>Gráficos</h4><div class="charts">${r.graficos.map(figura).join('')}</div>`
+    + (r.notas && r.notas.length ? `<p class="note">${r.notas.join(' ')}</p>` : '');
+}
+
+/* ----- Interfaz ----- */
+const alog = document.getElementById('alog');
+function aMsg(contenido, who, rico){
+  const d = document.createElement('div');
+  d.className = 'msg ' + who + (rico ? ' rich' : '');
+  if(rico) d.innerHTML = contenido; else d.textContent = contenido;
+  alog.appendChild(d);
+  alog.scrollTop = rico ? d.offsetTop - 8 : alog.scrollHeight;
+  return d;
+}
+async function enviarProblema(q){
+  aMsg(q, 'user');
+  const t = document.createElement('div');
+  t.className = 'msg bot typing';
+  t.innerHTML = '<i></i><i></i><i></i>';
+  alog.appendChild(t); alog.scrollTop = alog.scrollHeight;
+  try{
+    const [r] = await Promise.all([analizar(q), new Promise(ok=>setTimeout(ok,700))]);
+    t.remove(); aMsg(htmlResultado(r), 'bot', !r.error);
+  }catch(err){
+    t.remove(); aMsg('No pude resolver el problema. Revisa el enunciado e intenta de nuevo.', 'bot');
+  }
+}
+const EJEMPLOS = [
+  ['Tiro parabólico', 'Un proyectil sale a 30 m/s con un ángulo de 40° desde el suelo. Calcula el alcance y la altura máxima.'],
+  ['Lanzamiento vertical', 'Se lanza una pelota verticalmente hacia arriba a 18 m/s desde una altura de 2 m.'],
+  ['MRUA', 'Un auto parte del reposo con aceleración de 2.5 m/s² durante 12 s.'],
+  ['Péndulo', 'Péndulo simple de longitud 1.2 m con amplitud de 8°.'],
+  ['Masa-resorte', 'Una masa de 0.5 kg unida a un resorte de 20 N/m oscila con amplitud de 8 cm.'],
+  ['Regresión lineal', 'Datos experimentales: x: 1, 2, 3, 4, 5, 6; y: 2.1, 3.9, 6.2, 7.8, 10.1, 12.2']
+];
+EJEMPLOS.forEach(([etq, q])=>{
+  const b = document.createElement('button');
+  b.type = 'button'; b.className = 'chip'; b.textContent = etq;
+  b.addEventListener('click', ()=> enviarProblema(q));
+  document.getElementById('chips').appendChild(b);
+});
+aMsg('¡Hola! Describe un problema de física (cinemática, péndulo, masa-resorte) o pega tus datos como "x: 1, 2, 3; y: 2, 4, 6". Te daré el procedimiento, la respuesta y los gráficos. También puedes elegir un ejemplo arriba.', 'bot');
+document.getElementById('aform').addEventListener('submit', e=>{
+  e.preventDefault();
+  const inp = document.getElementById('ainput'), q = inp.value.trim();
+  if(!q) return;
+  inp.value = '';
+  enviarProblema(q);
 });
 </script>
 </body>
