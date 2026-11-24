@@ -55,6 +55,8 @@ h2.page{margin:0 0 1rem;font-size:1.5rem;font-weight:600;color:var(--blue)}
 .files a:hover{border-color:var(--blue);background:var(--soft)}
 .files strong{font-weight:600}
 .files span{font-size:.8rem;color:var(--muted)}
+.files small.count{margin-top:.25rem;font-size:.78rem;font-weight:600;color:var(--blue)}
+.files small.count:empty{display:none}
 .soon{padding:1.5rem;border:1px dashed var(--line);border-radius:12px;color:var(--muted);text-align:center}
 
 /* Animaciones */
@@ -209,7 +211,8 @@ semanas.forEach((n,i)=>{
   const a = document.createElement('a');
   a.href = `SEMANA%20${n}.pptx`;
   a.setAttribute('download','');
-  a.innerHTML = `<strong>Semana ${n}</strong><span>Descargar .pptx</span>`;
+  a.innerHTML = `<strong>Semana ${n}</strong><span>Descargar .pptx</span><small class="count" data-sem="${n}"></small>`;
+  a.addEventListener('click',()=>registrar(n));
   a.style.animationDelay = `${i*35}ms`;
   slides.appendChild(a);
 });
@@ -229,6 +232,38 @@ for(let i=1;i<=formTotal;i++){
   a.style.animationDelay = `${(i-1)*35}ms`;
   forms.appendChild(a);
 }
+
+/* ---------- CONTADOR DE DESCARGAS (Supabase) ----------
+   Pega aquí los dos datos de tu proyecto de Supabase
+   (Project Settings > API). Mientras estén vacíos, la página funciona igual,
+   solo que sin contador. La clave pública es segura de publicar porque la
+   tabla está protegida con RLS: solo permite leer y sumar descargas. */
+const SUPABASE_URL = 'https://iwagyrcsazwgxmpjwmdq.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_EQcpAhqAtn5odU9DWwDEbg_AjLJfVk1';
+const dbOn = Boolean(SUPABASE_URL && SUPABASE_KEY);
+const dbBase = SUPABASE_URL.replace(/\/rest\/v1\/?$/,'').replace(/\/$/,'');
+const dbHeaders = {apikey:SUPABASE_KEY,'Content-Type':'application/json'};
+function mostrarConteo(n,total){
+  const el = document.querySelector(`.count[data-sem="${n}"]`);
+  if(el) el.textContent = `${total} ${total===1?'descarga':'descargas'}`;
+}
+async function cargarConteos(){
+  if(!dbOn) return;
+  try{
+    const r = await fetch(`${dbBase}/rest/v1/descargas?select=semana,total`,{headers:dbHeaders});
+    if(!r.ok) return;
+    (await r.json()).forEach(f=>mostrarConteo(f.semana,f.total));
+  }catch(err){}
+}
+async function registrar(n){
+  if(!dbOn) return;
+  try{
+    const r = await fetch(`${dbBase}/rest/v1/rpc/incrementar_descarga`,
+      {method:'POST',headers:dbHeaders,body:JSON.stringify({n}),keepalive:true});
+    if(r.ok) mostrarConteo(n, await r.json());
+  }catch(err){}
+}
+cargarConteos();
 
 /* ---------- CHATBOT ----------
    Donny: reemplaza solo la función botReply(texto).
