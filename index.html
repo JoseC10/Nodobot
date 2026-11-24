@@ -83,8 +83,8 @@ figure.ch svg{width:100%;height:auto;display:block}
 .files a{display:flex;flex-direction:column;padding:.7rem .8rem;border:1px solid var(--line);border-radius:12px;text-decoration:none;color:var(--ink);background:var(--bg)}
 .files a:hover{border-color:var(--blue);background:var(--soft)}
 .files strong{font-weight:600}
-.files span{font-size:.8rem;color:var(--muted)}
-.files small.count{margin-top:.25rem;font-size:.78rem;font-weight:600;color:var(--blue)}
+.files span{font-size:.85rem;line-height:1.3;color:var(--muted)}
+.files small.count{margin-top:auto;padding-top:.4rem;font-size:.78rem;font-weight:600;color:var(--blue)}
 .files small.count:empty{display:none}
 .soon{padding:1.5rem;border:1px dashed var(--line);border-radius:12px;color:var(--muted);text-align:center}
 
@@ -240,12 +240,29 @@ show(location.hash.slice(1));
    Cuando tengan los temas reales, cambia los títulos del arreglo. */
 /* La semana 8 no se incluye porque es la semana del parcial. */
 const semanas = [1,2,3,4,5,6,7,9,10,11,12,13,14,15];
+const temas = {
+  1:'Electrostática I',
+  2:'Electrostática II',
+  3:'Capacitores y condensadores',
+  4:'Circuitos eléctricos I',
+  5:'Circuitos eléctricos II',
+  6:'Circuitos eléctricos III',
+  7:'Circuitos transitorios RC',
+  9:'Magnetismo I',
+  10:'Magnetismo II',
+  11:'Inducción Electromagnética',
+  12:'Corriente Alterna y Fasores',
+  13:'Circuitos RLC y Resonancia',
+  14:'Semiconductores, Rectificación y Regulación',
+  15:'Rectificadores, Filtros y Regulación Zener II'
+};
 const slides = document.getElementById('slides');
 semanas.forEach((n,i)=>{
   const a = document.createElement('a');
   a.href = `SEMANA%20${n}.pptx`;
   a.setAttribute('download','');
-  a.innerHTML = `<strong>Semana ${n}</strong><span>Descargar .pptx</span><small class="count" data-sem="${n}"></small>`;
+  a.title = `Descargar Semana ${n}: ${temas[n]}`;
+  a.innerHTML = `<strong>Semana ${n}</strong><span>${temas[n]}</span><small class="count" data-sem="${n}"></small>`;
   a.addEventListener('click',()=>registrar(n));
   a.style.animationDelay = `${i*35}ms`;
   slides.appendChild(a);
