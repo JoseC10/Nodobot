@@ -884,7 +884,7 @@ async function enviarProblema(q){
     t.remove(); aMsg('No pude resolver el problema. Revisa el enunciado e intenta de nuevo.', 'bot');
   }
 }
-const EJEMPLOS = [
+const PLANTILLAS = [
   ['Electrostática', 'Dos cargas de 4 µC y -6 µC están separadas 0.30 m. Calcula la fuerza, el campo y el potencial.'],
   ['Capacitancia y condensadores', 'Tres capacitores de 10 µF, 22 µF y 47 µF se conectan en serie a una fuente de 12 V.'],
   ['Corriente continua y circuitos', 'Tres resistencias de 100 Ω, 220 Ω y 330 Ω están en serie con una fuente de 12 V.'],
@@ -892,13 +892,17 @@ const EJEMPLOS = [
   ['Corriente alterna y RLC', 'Circuito RLC en serie con R = 100 Ω, L = 0.25 H y C = 50 µF, alimentado con una fuente de 170 sen(120πt) V.'],
   ['Diodos', 'Rectificador de onda completa con puente de diodos, fuente de 12 V rms, 60 Hz, carga de 100 Ω y filtro de 470 µF.']
 ];
-EJEMPLOS.forEach(([etq, q])=>{
+PLANTILLAS.forEach(([etq, plantilla])=>{
   const b = document.createElement('button');
   b.type = 'button'; b.className = 'chip'; b.textContent = etq;
-  b.addEventListener('click', ()=> enviarProblema(q));
+  b.addEventListener('click', ()=>{
+    const inp = document.getElementById('ainput');
+    inp.value = plantilla;
+    inp.focus();
+  });
   document.getElementById('chips').appendChild(b);
 });
-aMsg('¡Hola! Elige un ejemplo arriba o escribe tu problema con sus datos y unidades. Temas y variables que reconozco:\n• Electrostática: cargas q (µC, nC) y distancia r (m, cm).\n• Capacitancia y condensadores: C (µF, nF), V, serie o paralelo; área y separación de placas; carga o descarga RC con R.\n• Corriente continua: R (Ω, kΩ), V, serie, paralelo o mixto.\n• Magnetismo e inducción: B (T, mT), I, vueltas, longitud, área, tiempo; solenoide, conductor recto, fuerza de Lorentz (q, v, B, ángulo).\n• Corriente alterna: R, L (mH), C (µF), f (Hz), V (rms o pico).\n• Diodos: rectificador (media onda u onda completa, V, f, carga, filtro) y regulador Zener (V_Z, fuente, R_s, carga).\nTambién puedes pegar datos como "x: 1, 2, 3; y: 2, 4, 6" para una regresión lineal. Te daré el procedimiento, la respuesta y los gráficos.', 'bot');
+aMsg('¡Hola! Para analizar tus propios datos: 1) toca un tema arriba para cargar su plantilla, 2) cambia los números por los tuyos (con sus unidades) y 3) presiona Resolver.\n\nTambién puedes escribir el problema directamente con tus palabras (por ejemplo: "Dos cargas de 3 µC y -5 µC separadas 20 cm") o pegar datos experimentales como "x: 1, 2, 3; y: 2, 4, 6" para obtener una regresión lineal con procedimiento, respuesta y gráficos.', 'bot');
 document.getElementById('aform').addEventListener('submit', e=>{
   e.preventDefault();
   const inp = document.getElementById('ainput'), q = inp.value.trim();
