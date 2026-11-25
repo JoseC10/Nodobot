@@ -273,7 +273,7 @@ semanas.forEach((n,i)=>{
 
 /* ---------- FÓRMULAS (formularios descargables) ----------
    Los archivos están en la misma carpeta que este archivo (la raíz del repositorio)
-   con sus nombres originales: Resumen_1.jpg ... Resumen_17.jpg.
+   con sus nombres originales: "Resumen 1.jpg" ... "Resumen 17.jpg" (con espacio).
    Para cambiar el tema de una tarjeta, edita su texto en la lista. */
 const formularios = [
   'Análisis dimensional y vectores',
@@ -297,7 +297,7 @@ const formularios = [
 const forms = document.getElementById('forms');
 formularios.forEach((tema,i)=>{
   const n = i+1, a = document.createElement('a');
-  a.href = `Resumen_${n}.jpg`;
+  a.href = `Resumen%20${n}.jpg`;
   a.setAttribute('download','');
   a.title = `Descargar Formulario ${n}: ${tema}`;
   a.innerHTML = `<strong>Formulario ${n}</strong><span>${tema}</span>`;
