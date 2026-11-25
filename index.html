@@ -368,8 +368,9 @@ if(DIFY_CHAT_URL){
 
 /* ---------- ANÁLISIS EXPERIMENTAL ----------
    Resuelve el problema en el navegador (sin servidor) y dibuja las gráficas en SVG.
-   Tipos: tiro parabólico, lanzamiento vertical / caída libre, MRUA, péndulo simple,
-   masa-resorte (MAS) y regresión lineal de datos experimentales.
+   Temas: electrostática, capacitancia y condensadores (incluye carga/descarga RC), corriente continua
+   y circuitos, magnetismo e inducción, corriente alterna (RLC) y diodos (rectificador y Zener).
+   También hace regresión lineal de datos experimentales.
    Para usar un LLM propio, reemplaza solo analizar(): debe devolver un objeto con la
    misma forma que los solucionadores (titulo, datos, pasos, respuesta, graficos, notas)
    o { error: '...' }. La clave de la API debe quedar en un backend propio. */
@@ -380,200 +381,383 @@ const lin = (a,b,n)=> Array.from({length:n},(_,i)=> a+(b-a)*i/(n-1));
 const toRad = d=> d*Math.PI/180, toDeg = r=> r*180/Math.PI;
 const COLORES = ['#1d4a7a','#d9622b','#2a9d8f','#8a5cc2'];
 
-/* Lee cantidades con unidades del enunciado */
-function leerNumeros(t){
-  const n = {v:[],a:[],m:[],cm:[],s:[],deg:[],kg:[],k:[]};
-  const re = /(-?\d+(?:[.,]\d+)?)\s*(m\/s(?:²|\^2|2)|m\/s|n\/m|kg|cm|metros?|m(?![\/a-z])|[°º]|grados?|segundos?|s(?![a-z]))/gi;
-  let r;
-  while((r = re.exec(t))){
-    const x = parseFloat(r[1].replace(',','.')), u = r[2].toLowerCase();
-    if(u.startsWith('m/s')) (u.length>3 ? n.a : n.v).push(x);
-    else if(u==='n/m') n.k.push(x);
-    else if(u==='kg') n.kg.push(x);
-    else if(u==='cm') n.cm.push(x);
-    else if(u==='°'||u==='º'||u.startsWith('grado')) n.deg.push(x);
-    else if(u==='s'||u.startsWith('seg')) n.s.push(x);
-    else n.m.push(x);
+/* ----- Unidades, prefijos y lectura del enunciado ----- */
+const K = 8.9875e9, MU0 = 4e-7*Math.PI, EPS0 = 8.854e-12;
+const PRE = [[1e12,'T'],[1e9,'G'],[1e6,'M'],[1e3,'k'],[1,''],[1e-3,'m'],[1e-6,'µ'],[1e-9,'n'],[1e-12,'p']];
+const pref = x=>{ const a = Math.abs(x); if(!a || !isFinite(a)) return [1,'']; return PRE.find(([m])=>a>=m*0.9995) || PRE[PRE.length-1]; };
+const ev = (x,u,d=4)=>{ const [m,p] = pref(x); return [nf(x/m,d), p+u]; };
+const es = (x,u,d=4)=> ev(x,u,d).join(' ');
+function graf(titulo,[xn,xu],[yn,yu],series){
+  const mx = Math.max(...series.flatMap(s=>s.pts.map(p=>Math.abs(p[0])))), my = Math.max(...series.flatMap(s=>s.pts.map(p=>Math.abs(p[1]))));
+  const [kx,px] = (xu==='°'||xu==='') ? [1,''] : pref(mx), [ky,py] = (yu==='°'||yu==='') ? [1,''] : pref(my);
+  return {titulo, xlabel:`${xn} (${px}${xu})`, ylabel:`${yn} (${py}${yu})`, series: series.map(s=>({...s, pts:s.pts.map(([a,b])=>[a/kx,b/ky])}))};
+}
+const UNID = [
+  ['m/s',1,'v'],['N/C',1,'Ef'],
+  ['k[Ωω]|kohm(?:ios?)?',1e3,'R'],['M[Ωω]|megaohm(?:ios?)?',1e6,'R'],['[Ωω]|ohm(?:ios?)?',1,'R'],
+  ['[µμu]F',1e-6,'C'],['nF',1e-9,'C'],['pF',1e-12,'C'],['mF',1e-3,'C'],['F|faradios?',1,'C'],
+  ['mH',1e-3,'L'],['[µμu]H',1e-6,'L'],['H|henrios?',1,'L'],
+  ['kHz',1e3,'f'],['Hz',1,'f'],
+  ['ms',1e-3,'t'],['[µμu]s',1e-6,'t'],['s|seg|segundos?',1,'t'],
+  ['mA',1e-3,'I'],['[µμu]A',1e-6,'I'],['A|amperios?',1,'I'],
+  ['kV',1e3,'V'],['mV',1e-3,'V'],['V|voltios?',1,'V'],
+  ['[µμu]C',1e-6,'Q'],['nC',1e-9,'Q'],['mC',1e-3,'Q'],['C|culombios?',1,'Q'],
+  ['mT',1e-3,'B'],['[µμu]T',1e-6,'B'],['T|teslas?',1,'B'],
+  ['cm(?:²|\\^2|2)',1e-4,'A'],['m(?:²|\\^2|2)',1,'A'],
+  ['cm',1e-2,'d'],['mm',1e-3,'d'],['m|metros?',1,'d'],
+  ['kg',1,'M'],['W',1,'P'],['[°º]|grados?',1,'deg'],['espiras?|vueltas',1,'N']
+];
+function leer(t){
+  t = t.replace(/[−–]/g,'-');
+  const alts = UNID.map(([p])=>`(${p})(?![A-Za-zΩωµμ²/])`).join('|');
+  const re = new RegExp(`(-?\\d+(?:[.,]\\d+)?(?:[eE][+-]?\\d+)?)\\s*(?:${alts})`,'g');
+  const n = {items:[]};
+  UNID.forEach(([,,k])=>{ n[k] = n[k] || []; });
+  let m;
+  while((m = re.exec(t))){
+    let k = -1;
+    for(let i=2; i<m.length; i++) if(m[i]!==undefined){ k = i-2; break; }
+    const [,mult,tipo] = UNID[k], v = parseFloat(m[1].replace(',','.'))*mult;
+    n[tipo].push(v); n.items.push({tipo, v, i:m.index});
   }
   return n;
 }
+/* Primer valor de un tipo que aparece justo después de una palabra clave */
+function tras(n,t,kw,tipo,ventana=45){
+  const m = new RegExp(kw,'i').exec(t);
+  if(!m) return null;
+  const it = n.items.find(x=>x.tipo===tipo && x.i>=m.index && x.i-m.index<ventana);
+  return it ? it.v : null;
+}
 
-function detectar(s){
-  if(/(^|[^a-z])x\s*[:=]/.test(s) && /(^|[^a-z])y\s*[:=]/.test(s)) return 'datos';
-  if(/p[eé]ndulo/.test(s)) return 'pendulo';
-  if(/resorte|hooke|oscilador/.test(s)) return 'resorte';
-  if(/proyectil|parab[oó]lic|oblicu|[°º]|grados|[aá]ngulo|dispara|patea/.test(s)) return 'proyectil';
-  if(/ca[ií]da libre|deja caer|suelta|hacia arriba|hacia abajo|verticalmente|edificio|torre|acantilado/.test(s)) return 'vertical';
-  if(/aceler|reposo|auto|veh[ií]culo|m[oó]vil|tren|frena|mrua|moto|ciclista|detiene/.test(s)) return 'mrua';
+function detectar(low,n){
+  if(/(^|[^a-z])x\s*[:=]/.test(low) && /(^|[^a-z])y\s*[:=]/.test(low)) return 'datos';
+  if(/diodo|rectific|zener|semiconductor/.test(low)) return 'diodo';
+  if(/alterna|fasor|impedancia|rlc|resonan|reactancia|rms|eficaz|\bsen\s*\(|\bsin\s*\(/.test(low) || (n.f.length && (n.L.length || n.C.length))) return 'ca';
+  if(/magn[eé]tic|solenoide|lorentz|induc|faraday|\bfem\b|flujo|espira|biot|campo b|alambre|cable|hilo conductor|bobina/.test(low)) return 'mag';
+  if(/\brc\b|descarg|constante de tiempo|se carga/.test(low)) return 'rc';
+  if(/capacit|condensador|placas paralelas/.test(low)) return 'cap';
+  if(/resistenc|ohm|kirchhoff|circuito|bater[ií]a|serie|paralelo/.test(low) || n.R.length) return 'dc';
+  if(/coulomb|carga|campo el[eé]ctrico|potencial|electrost|fuerza el[eé]ctrica/.test(low) || n.Q.length) return 'est';
   return null;
 }
 
 /* ----- Solucionadores: cada uno devuelve { titulo, datos, pasos, respuesta, graficos, notas } ----- */
-function sVertical(n, low){
-  if(!n.v.length && !n.m.length) return {error:'Indica la velocidad inicial y/o la altura, por ejemplo: "Se lanza una pelota hacia arriba a 18 m/s desde 2 m de altura".'};
-  const g = n.a.length ? Math.abs(n.a[0]) : G;
-  let v0 = n.v.length ? n.v[0] : 0;
-  if(/hacia abajo/.test(low)) v0 = -Math.abs(v0);
-  const y0 = n.m.length ? n.m[0] : 0;
-  const tf = (v0 + Math.sqrt(v0*v0 + 2*g*y0))/g;
-  if(!(tf>0)) return {error:'Con esos datos el cuerpo no se mueve: agrega una altura inicial o una velocidad hacia arriba.'};
-  const sube = v0>0, tm = sube ? v0/g : 0, hm = y0 + (sube ? v0*v0/(2*g) : 0), vf = v0 - g*tf;
-  const ts = lin(0, tf, 90);
-  const pasos = ['Posición: y(t) = y₀ + v₀t − ½gt²;  velocidad: v(t) = v₀ − gt.'];
-  if(sube) pasos.push(`Altura máxima (v = 0): t = v₀/g = ${nf(v0)}/${nf(g)} = ${nf(tm)} s  →  y<sub>máx</sub> = y₀ + v₀²/(2g) = ${nf(hm)} m.`);
-  pasos.push(`Tiempo de vuelo (y = 0): t = [v₀ + √(v₀² + 2gy₀)]/g = ${nf(tf)} s.`);
-  pasos.push(`Velocidad al llegar al suelo: v = v₀ − g·t = ${nf(vf)} m/s (el signo negativo indica que baja).`);
-  const respuesta = [['Tiempo de vuelo', nf(tf), 's']];
-  if(sube) respuesta.push(['Altura máxima', nf(hm), 'm'], ['Tiempo en la altura máxima', nf(tm), 's']);
-  respuesta.push(['Velocidad de impacto', nf(vf), 'm/s']);
-  return {
-    titulo: v0===0 ? 'Caída libre' : 'Lanzamiento vertical',
-    datos: [['Velocidad inicial v₀', nf(v0), 'm/s'], ['Altura inicial y₀', nf(y0), 'm'], ['Gravedad g', nf(g), 'm/s²']],
-    pasos, respuesta,
-    graficos: [
-      {titulo:'Altura en función del tiempo', xlabel:'t (s)', ylabel:'y (m)', series:[{name:'y(t)', pts: ts.map(t=>[t, y0+v0*t-.5*g*t*t])}]},
-      {titulo:'Velocidad en función del tiempo', xlabel:'t (s)', ylabel:'v (m/s)', series:[{name:'v(t)', pts: ts.map(t=>[t, v0-g*t])}]}
-    ],
-    notas: ['Se desprecia la resistencia del aire.']
-  };
-}
-
-function sProyectil(n){
-  if(!n.v.length || !n.deg.length) return {error:'Para un tiro parabólico indica la velocidad y el ángulo, por ejemplo: "Un proyectil sale a 30 m/s con un ángulo de 40°".'};
-  const g = n.a.length ? Math.abs(n.a[0]) : G, v0 = n.v[0], th = n.deg[0], y0 = n.m.length ? n.m[0] : 0;
-  const vx = v0*Math.cos(toRad(th)), vy0 = v0*Math.sin(toRad(th));
-  const tf = (vy0 + Math.sqrt(vy0*vy0 + 2*g*y0))/g, R = vx*tf;
-  const tm = Math.max(vy0,0)/g, hm = y0 + (vy0>0 ? vy0*vy0/(2*g) : 0);
-  const vyf = vy0 - g*tf, vimp = Math.hypot(vx, vyf), aimp = toDeg(Math.atan2(Math.abs(vyf), vx));
-  const ts = lin(0, tf, 90);
-  return {
-    titulo: 'Tiro parabólico',
-    datos: [['Velocidad inicial v₀', nf(v0), 'm/s'], ['Ángulo θ', nf(th), '°'], ['Altura inicial y₀', nf(y0), 'm'], ['Gravedad g', nf(g), 'm/s²']],
-    pasos: [
-      `Componentes: vₓ = v₀cosθ = ${nf(vx)} m/s;  v<sub>y0</sub> = v₀senθ = ${nf(vy0)} m/s.`,
-      `Tiempo de vuelo (y = 0): t = [v<sub>y0</sub> + √(v<sub>y0</sub>² + 2gy₀)]/g = ${nf(tf)} s.`,
-      `Alcance: R = vₓ·t = ${nf(vx)}·${nf(tf)} = ${nf(R)} m.`,
-      `Altura máxima: y<sub>máx</sub> = y₀ + v<sub>y0</sub>²/(2g) = ${nf(hm)} m, alcanzada en t = v<sub>y0</sub>/g = ${nf(tm)} s.`,
-      `Al impacto: v<sub>y</sub> = v<sub>y0</sub> − g·t = ${nf(vyf)} m/s, así que |v| = √(vₓ² + v<sub>y</sub>²) = ${nf(vimp)} m/s.`
-    ],
-    respuesta: [['Alcance horizontal', nf(R), 'm'], ['Altura máxima', nf(hm), 'm'], ['Tiempo de vuelo', nf(tf), 's'], ['Rapidez de impacto', nf(vimp), 'm/s'], ['Ángulo de impacto', nf(aimp), '° bajo la horizontal']],
-    graficos: [
-      {titulo:'Trayectoria', xlabel:'x (m)', ylabel:'y (m)', series:[
-        {name:'Trayectoria', pts: ts.map(t=>[vx*t, y0+vy0*t-.5*g*t*t])},
-        {name:'Altura máxima', pts:[[vx*tm, hm]], line:false, dots:true},
-        {name:'Impacto', pts:[[R, 0]], line:false, dots:true}]},
-      {titulo:'Componentes de la velocidad', xlabel:'t (s)', ylabel:'v (m/s)', series:[
-        {name:'vₓ (constante)', pts: ts.map(t=>[t, vx])},
-        {name:'v_y(t)', pts: ts.map(t=>[t, vy0-g*t])}]}
-    ],
-    notas: ['Se desprecia la resistencia del aire.']
-  };
-}
-
-function sMrua(n, low){
-  const K = {};
-  if(/reposo/.test(low)){ K.v0 = 0; if(n.v.length) K.vf = n.v[0]; }
-  else if(/deten|se para|hasta parar/.test(low)){ K.vf = 0; if(n.v.length) K.v0 = n.v[0]; }
-  else { if(n.v.length) K.v0 = n.v[0]; if(n.v.length>1) K.vf = n.v[1]; }
-  if(n.a.length){ K.a = /frena|desacel/.test(low) ? -Math.abs(n.a[0]) : n.a[0]; }
-  if(n.s.length) K.t = n.s[0];
-  if(n.m.length) K.x = n.m[0];
-  const dado = new Set(Object.keys(K)), has = k=> K[k]!==undefined;
-  for(let it=0; it<6; it++){
-    if(has('a')&&has('t')&&has('v0')){ K.vf ??= K.v0+K.a*K.t; K.x ??= K.v0*K.t+.5*K.a*K.t*K.t; }
-    if(has('v0')&&has('vf')&&has('t')&&K.t!==0){ K.a ??= (K.vf-K.v0)/K.t; K.x ??= (K.v0+K.vf)/2*K.t; }
-    if(has('v0')&&has('vf')&&has('a')&&K.a!==0){ K.t ??= (K.vf-K.v0)/K.a; K.x ??= (K.vf*K.vf-K.v0*K.v0)/(2*K.a); }
-    if(has('v0')&&has('vf')&&has('x')&&K.v0+K.vf!==0){ K.t ??= 2*K.x/(K.v0+K.vf); K.a ??= (K.vf*K.vf-K.v0*K.v0)/(2*K.x); }
-    if(has('vf')&&has('a')&&has('t')){ K.v0 ??= K.vf-K.a*K.t; }
-    if(has('v0')&&has('a')&&has('x')&&!has('t')){
-      if(K.a===0){ if(K.v0!==0) K.t = K.x/K.v0; }
-      else{
-        const d = K.v0*K.v0+2*K.a*K.x;
-        if(d>=0){
-          const raices = [(-K.v0+Math.sqrt(d))/K.a, (-K.v0-Math.sqrt(d))/K.a].filter(z=>z>=0);
-          if(raices.length) K.t = Math.min(...raices);
-        }
-      }
-    }
+function sEst(n){
+  const q = n.Q, r = n.d[0];
+  if(!q.length || !(r>0)) return {error:'Indica al menos una carga y la distancia, por ejemplo: "Dos cargas de 4 µC y -6 µC están separadas 0.30 m".'};
+  const q1 = q[0], q2 = q[1], rs = lin(r*.3, r*3, 80);
+  const E1 = K*Math.abs(q1)/(r*r), V1 = K*q1/r;
+  const datos = [['Carga q₁', ...ev(q1,'C')]];
+  if(q2!==undefined) datos.push(['Carga q₂', ...ev(q2,'C')]);
+  datos.push(['Distancia r', ...ev(r,'m')], ['Constante k', '8.99×10⁹', 'N·m²/C²']);
+  if(q2===undefined){
+    return {
+      titulo:'Campo y potencial de una carga puntual', datos,
+      pasos:[
+        `Campo eléctrico: E = k|q|/r² = (8.99×10⁹)(${nf(Math.abs(q1))})/(${nf(r)})² = ${es(E1,'N/C')}, ${q1>0?'saliendo de':'entrando a'} la carga.`,
+        `Potencial eléctrico: V = kq/r = ${es(V1,'V')}.`
+      ],
+      respuesta:[['Campo eléctrico E', ...ev(E1,'N/C')], ['Potencial V', ...ev(V1,'V')]],
+      graficos:[
+        graf('Campo eléctrico en función de la distancia',['r','m'],['E','N/C'],[{name:'E(r)', pts:rs.map(x=>[x,K*Math.abs(q1)/(x*x)])},{name:'Valor calculado', pts:[[r,E1]], line:false, dots:true}]),
+        graf('Potencial en función de la distancia',['r','m'],['V','V'],[{name:'V(r)', pts:rs.map(x=>[x,K*q1/x])},{name:'Valor calculado', pts:[[r,V1]], line:false, dots:true}])
+      ],
+      notas:['Con una sola carga se calcula el campo y el potencial a la distancia r; con dos cargas, también la fuerza entre ellas.']
+    };
   }
-  if(!['v0','vf','a','t','x'].every(has) || !(K.t>0)) return {error:'No alcanzan los datos. Dame al menos tres de estas cantidades: velocidad inicial, velocidad final, aceleración, tiempo y distancia. Ejemplo: "Un auto parte del reposo con aceleración de 2.5 m/s² durante 12 s".'};
-  const etiqueta = {v0:['Velocidad inicial v₀','m/s'], vf:['Velocidad final v','m/s'], a:['Aceleración a','m/s²'], t:['Tiempo t','s'], x:['Distancia x','m']};
-  const orden = ['v0','vf','a','t','x'];
-  const calculadas = orden.filter(k=>!dado.has(k));
-  const ts = lin(0, K.t, 60);
-  const notas = ['Aceleración constante (MRUA).'];
-  if(K.a*K.v0<0 && -K.v0/K.a < K.t) notas.push(`La velocidad cambia de sentido en t = ${nf(-K.v0/K.a)} s; la distancia x es el desplazamiento neto, no el recorrido total.`);
+  const F = K*Math.abs(q1*q2)/(r*r), U = K*q1*q2/r, atrae = q1*q2<0;
   return {
-    titulo: 'Movimiento rectilíneo uniformemente acelerado',
-    datos: orden.filter(k=>dado.has(k)).map(k=>[etiqueta[k][0], nf(K[k]), etiqueta[k][1]]),
-    pasos: [
-      'Ecuaciones: v = v₀ + at;  x = v₀t + ½at²;  v² = v₀² + 2ax.',
-      `Se despejan ${calculadas.length ? calculadas.map(k=>etiqueta[k][0].split(' ').pop()).join(', ') : 'las incógnitas'} con las ecuaciones que usan los datos conocidos.`,
-      `Comprobación: v₀ + a·t = ${nf(K.v0)} + (${nf(K.a)})(${nf(K.t)}) = ${nf(K.v0+K.a*K.t)} m/s  y  v₀t + ½at² = ${nf(K.v0*K.t+.5*K.a*K.t*K.t)} m.`
+    titulo:'Ley de Coulomb', datos,
+    pasos:[
+      `Fuerza: F = k|q₁q₂|/r² = (8.99×10⁹)(${nf(Math.abs(q1))})(${nf(Math.abs(q2))})/(${nf(r)})² = ${es(F,'N')}.`,
+      `Como las cargas tienen ${atrae?'signos opuestos':'el mismo signo'}, la fuerza es ${atrae?'atractiva':'repulsiva'}.`,
+      `Campo de q₁ a la distancia r: E = k|q₁|/r² = ${es(E1,'N/C')};  potencial: V = kq₁/r = ${es(V1,'V')}.`,
+      `Energía potencial del par: U = kq₁q₂/r = ${es(U,'J')}.`
     ],
-    respuesta: (calculadas.length ? calculadas : orden).map(k=>[etiqueta[k][0], nf(K[k]), etiqueta[k][1]]),
-    graficos: [
-      {titulo:'Posición en función del tiempo', xlabel:'t (s)', ylabel:'x (m)', series:[{name:'x(t)', pts: ts.map(t=>[t, K.v0*t+.5*K.a*t*t])}]},
-      {titulo:'Velocidad en función del tiempo', xlabel:'t (s)', ylabel:'v (m/s)', series:[{name:'v(t)', pts: ts.map(t=>[t, K.v0+K.a*t])}]}
+    respuesta:[['Fuerza F', ...ev(F,'N')], ['Tipo de fuerza', atrae?'Atractiva':'Repulsiva', ''], ['Campo de q₁ en r', ...ev(E1,'N/C')], ['Potencial de q₁ en r', ...ev(V1,'V')], ['Energía potencial U', ...ev(U,'J')]],
+    graficos:[
+      graf('Fuerza en función de la distancia',['r','m'],['F','N'],[{name:'F(r)', pts:rs.map(x=>[x,K*Math.abs(q1*q2)/(x*x)])},{name:'Valor calculado', pts:[[r,F]], line:false, dots:true}]),
+      graf('Energía potencial en función de la distancia',['r','m'],['U','J'],[{name:'U(r)', pts:rs.map(x=>[x,K*q1*q2/x])},{name:'Valor calculado', pts:[[r,U]], line:false, dots:true}])
+    ],
+    notas:['Cargas puntuales en el vacío (aire).']
+  };
+}
+
+function sCap(n,low){
+  let C = n.C.slice();
+  const notas = [], pasos = [], datos = [], Vd = n.V.length ? n.V[0] : 10;
+  if(!n.V.length) notas.push('No indicaste el voltaje; supuse V = 10 V.');
+  if(!C.length && n.A.length && n.d.length){
+    const A = n.A[0], d = n.d[0]; C = [EPS0*A/d];
+    datos.push(['Área de las placas A', nf(A), 'm²'], ['Separación d', ...ev(d,'m')]);
+    pasos.push(`Capacitor de placas paralelas: C = ε₀A/d = (8.854×10⁻¹²)(${nf(A)})/(${nf(d)}) = ${es(C[0],'F')}.`);
+  }
+  if(!C.length) return {error:'Indica las capacitancias, por ejemplo: "Tres capacitores de 10 µF, 22 µF y 47 µF se conectan en serie a una fuente de 12 V", o el área y la separación de las placas.'};
+  C.forEach((c,i)=> datos.push([`Capacitancia C${C.length>1?i+1:''}`, ...ev(c,'F')]));
+  datos.push(['Voltaje V', ...ev(Vd,'V')]);
+  const ser = 1/C.reduce((a,c)=>a+1/c,0), par = C.reduce((a,c)=>a+c,0);
+  const modo = C.length<2 ? 'uno' : /paralelo/.test(low) ? 'par' : 'ser';
+  if(C.length>1 && !/paralelo|serie/.test(low)) notas.push('No indicaste la conexión; supuse serie (abajo también ves el equivalente en paralelo).');
+  const Ceq = modo==='par' ? par : modo==='ser' ? ser : C[0], Q = Ceq*Vd, U = .5*Ceq*Vd*Vd;
+  if(modo==='ser') pasos.push(
+    `Serie: 1/C<sub>eq</sub> = Σ 1/Cᵢ  →  C<sub>eq</sub> = ${es(ser,'F')}.`,
+    `La carga es la misma en todos: Q = C<sub>eq</sub>·V = ${es(Q,'C')}.`,
+    `Voltaje en cada capacitor (Vᵢ = Q/Cᵢ): ${C.map(c=>es(Q/c,'V')).join(', ')}; suman ${es(Vd,'V')}.`);
+  else if(modo==='par') pasos.push(
+    `Paralelo: C<sub>eq</sub> = ΣCᵢ = ${es(par,'F')}.`,
+    `Todos tienen el mismo voltaje V; carga en cada uno (Qᵢ = CᵢV): ${C.map(c=>es(c*Vd,'C')).join(', ')}.`,
+    `Carga total: Q = C<sub>eq</sub>·V = ${es(Q,'C')}.`);
+  else pasos.push(`Carga almacenada: Q = C·V = ${es(Q,'C')}.`);
+  pasos.push(`Energía almacenada: U = ½C<sub>eq</sub>V² = ${es(U,'J')}.`);
+  const respuesta = [['Capacitancia equivalente', ...ev(Ceq,'F')], ['Carga total Q', ...ev(Q,'C')], ['Energía almacenada U', ...ev(U,'J')]];
+  if(C.length>1 && !/paralelo|serie/.test(low)) respuesta.push(['Equivalente en paralelo', ...ev(par,'F')]);
+  const Vs = lin(0, Vd, 50);
+  return {
+    titulo:'Capacitancia y condensadores', datos, pasos, respuesta,
+    graficos:[
+      graf('Carga en función del voltaje',['V','V'],['Q','C'],[{name:'Q = Ceq·V', pts:Vs.map(v=>[v,Ceq*v])},{name:'Punto de trabajo', pts:[[Vd,Q]], line:false, dots:true}]),
+      graf('Energía en función del voltaje',['V','V'],['U','J'],[{name:'U = ½Ceq·V²', pts:Vs.map(v=>[v,.5*Ceq*v*v])},{name:'Punto de trabajo', pts:[[Vd,U]], line:false, dots:true}])
     ],
     notas
   };
 }
 
-function sPendulo(n){
-  const L = n.m.length ? n.m[0] : n.cm.length ? n.cm[0]/100 : null;
-  if(!(L>0)) return {error:'Indica la longitud del péndulo, por ejemplo: "Péndulo simple de 1.2 m con amplitud de 8°".'};
-  const g = n.a.length ? Math.abs(n.a[0]) : G, th = n.deg.length ? n.deg[0] : 10, th0 = toRad(th);
-  const w = Math.sqrt(g/L), T = 2*Math.PI/w, Tc = T*(1+th0*th0/16), vmax = L*w*th0;
-  const ts = lin(0, 2*T, 140);
-  const notas = ['Aproximación de ángulos pequeños: θ(t) = θ₀·cos(ωt).'];
-  if(!n.deg.length) notas.push('No indicaste la amplitud; supuse θ₀ = 10°.');
-  if(th>15) notas.push('Con amplitudes mayores a unos 15° la aproximación pierde precisión; usa la corrección del período.');
+function sRC(n,low){
+  const R = n.R[0], C = n.C[0], V = n.V[0], desc = /descarg/.test(low);
+  if(!(R>0) || !(C>0) || !(V>0)) return {error:'Indica R, C y el voltaje, por ejemplo: "Un capacitor de 100 µF se carga a través de una resistencia de 10 kΩ con una fuente de 12 V" (o escribe "descarga").'};
+  const tau = R*C, ts = lin(0, 5*tau, 100), t1 = n.t.length ? n.t[0] : null;
+  const vc = t=> desc ? V*Math.exp(-t/tau) : V*(1-Math.exp(-t/tau)), ic = t=> (V/R)*Math.exp(-t/tau);
+  const pasos = [
+    `Constante de tiempo: τ = R·C = ${es(R,'Ω')} · ${es(C,'F')} = ${es(tau,'s')}.`,
+    desc ? `Descarga: V<sub>C</sub>(t) = V₀·e<sup>−t/τ</sup>;  corriente: I(t) = (V₀/R)·e<sup>−t/τ</sup>.` : `Carga: V<sub>C</sub>(t) = V·(1 − e<sup>−t/τ</sup>);  corriente: I(t) = (V/R)·e<sup>−t/τ</sup>.`,
+    `En t = τ el voltaje es ${nf(100*vc(tau)/V,4)} % de V (${es(vc(tau),'V')}); en t = 5τ ya llegó a ${nf(100*vc(5*tau)/V,4)} % (se considera estado estable).`
+  ];
+  const respuesta = [['Constante de tiempo τ', ...ev(tau,'s')], ['Corriente inicial I₀', ...ev(V/R,'A')], ['Voltaje en t = τ', ...ev(vc(tau),'V')], ['Tiempo para el estado estable (5τ)', ...ev(5*tau,'s')]];
+  if(t1!==null){ pasos.push(`En t = ${es(t1,'s')}: V<sub>C</sub> = ${es(vc(t1),'V')} e I = ${es(ic(t1),'A')}.`); respuesta.push([`V_C en t = ${es(t1,'s')}`, ...ev(vc(t1),'V')], [`Corriente en t = ${es(t1,'s')}`, ...ev(ic(t1),'A')]); }
   return {
-    titulo: 'Péndulo simple',
-    datos: [['Longitud L', nf(L), 'm'], ['Amplitud θ₀', nf(th), '°'], ['Gravedad g', nf(g), 'm/s²']],
-    pasos: [
-      `Frecuencia angular: ω = √(g/L) = √(${nf(g)}/${nf(L)}) = ${nf(w)} rad/s.`,
-      `Período: T = 2π√(L/g) = ${nf(T)} s;  frecuencia: f = 1/T = ${nf(1/T)} Hz.`,
-      `Corrección por amplitud finita: T ≈ T₀(1 + θ₀²/16) = ${nf(Tc)} s.`,
-      `Rapidez máxima en el punto más bajo: v<sub>máx</sub> = L·ω·θ₀ = ${nf(vmax)} m/s.`
+    titulo: desc ? 'Descarga de un capacitor (circuito RC)' : 'Carga de un capacitor (circuito RC)',
+    datos:[['Resistencia R', ...ev(R,'Ω')], ['Capacitancia C', ...ev(C,'F')], ['Voltaje V', ...ev(V,'V')]],
+    pasos, respuesta,
+    graficos:[
+      graf('Voltaje del capacitor',['t','s'],['V_C','V'],[{name:'V_C(t)', pts:ts.map(t=>[t,vc(t)])},{name:'t = τ', pts:[[tau,vc(tau)]], line:false, dots:true}]),
+      graf('Corriente del circuito',['t','s'],['I','A'],[{name:'I(t)', pts:ts.map(t=>[t,ic(t)])},{name:'t = τ', pts:[[tau,ic(tau)]], line:false, dots:true}])
     ],
-    respuesta: [['Período T', nf(T), 's'], ['Frecuencia f', nf(1/T), 'Hz'], ['Frecuencia angular ω', nf(w), 'rad/s'], ['Período corregido', nf(Tc), 's'], ['Rapidez máxima', nf(vmax), 'm/s']],
-    graficos: [
-      {titulo:'Ángulo en función del tiempo', xlabel:'t (s)', ylabel:'θ (°)', series:[{name:'θ(t)', pts: ts.map(t=>[t, th*Math.cos(w*t)])}]},
-      {titulo:'Rapidez de la masa', xlabel:'t (s)', ylabel:'v (m/s)', series:[{name:'v(t)', pts: ts.map(t=>[t, -vmax*Math.sin(w*t)])}]}
+    notas:['Capacitor inicialmente '+(desc?'cargado a V.':'descargado.')]
+  };
+}
+
+function sDC(n,low){
+  const R = n.R, notas = [];
+  if(!R.length) return {error:'Indica las resistencias y la fuente, por ejemplo: "Tres resistencias de 100 Ω, 220 Ω y 330 Ω están en serie con una fuente de 12 V".'};
+  const modo = R.length<2 ? 'uno' : /mixto/.test(low) ? 'mix' : /paralelo/.test(low) ? 'par' : 'ser';
+  if(R.length>1 && !/mixto|paralelo|serie/.test(low)) notas.push('No indicaste la conexión; supuse serie.');
+  const inv = a=> 1/a.reduce((s,x)=>s+1/x,0);
+  const Req = modo==='ser' ? R.reduce((a,b)=>a+b,0) : modo==='par' ? inv(R) : modo==='mix' ? R[0]+inv(R.slice(1)) : R[0];
+  let V = n.V[0];
+  if(V===undefined && n.I.length) V = n.I[0]*Req;
+  if(!(V>0)) return {error:'Indica el voltaje de la fuente (o la corriente), por ejemplo: "… con una fuente de 12 V".'};
+  const It = V/Req;
+  let Vi, Ii;
+  if(modo==='ser'){ Ii = R.map(()=>It); Vi = R.map(r=>It*r); }
+  else if(modo==='mix'){ const Vp = V-It*R[0]; Vi = R.map((r,i)=>i===0 ? It*r : Vp); Ii = R.map((r,i)=>i===0 ? It : Vp/r); }
+  else { Vi = R.map(()=>V); Ii = R.map(r=>V/r); }
+  const Pi = R.map((r,i)=>Vi[i]*Ii[i]), Pt = V*It;
+  const pasos = [];
+  if(modo==='ser') pasos.push(`Serie: R<sub>eq</sub> = ΣRᵢ = ${es(Req,'Ω')}.`, `Ley de Ohm: I = V/R<sub>eq</sub> = ${es(V,'V')}/${es(Req,'Ω')} = ${es(It,'A')}, la misma en todas las resistencias.`, `Caída en cada una (Vᵢ = I·Rᵢ): ${Vi.map(v=>es(v,'V')).join(', ')}.`, `Ley de Kirchhoff de voltajes: ΣVᵢ = ${es(Vi.reduce((a,b)=>a+b,0),'V')} = V de la fuente.`);
+  else if(modo==='par') pasos.push(`Paralelo: 1/R<sub>eq</sub> = Σ 1/Rᵢ  →  R<sub>eq</sub> = ${es(Req,'Ω')}.`, `Corriente total: I = V/R<sub>eq</sub> = ${es(It,'A')}.`, `Todas tienen el mismo voltaje; corriente en cada una (Iᵢ = V/Rᵢ): ${Ii.map(i=>es(i,'A')).join(', ')}.`, `Ley de Kirchhoff de corrientes: ΣIᵢ = ${es(Ii.reduce((a,b)=>a+b,0),'A')} = I total.`);
+  else if(modo==='mix') pasos.push(`Mixto: R₁ en serie con el paralelo del resto → R<sub>eq</sub> = R₁ + (R₂∥R₃…) = ${es(Req,'Ω')}.`, `Corriente total: I = V/R<sub>eq</sub> = ${es(It,'A')}.`, `Voltaje en R₁: ${es(Vi[0],'V')}; en la rama en paralelo: ${es(V-Vi[0],'V')}.`);
+  else pasos.push(`Ley de Ohm: I = V/R = ${es(V,'V')}/${es(R[0],'Ω')} = ${es(It,'A')}.`);
+  pasos.push(`Potencia: P = V·I = ${es(Pt,'W')}  (suma de las potencias individuales: ${es(Pi.reduce((a,b)=>a+b,0),'W')}).`);
+  const respuesta = [['Resistencia equivalente', ...ev(Req,'Ω')], ['Corriente total', ...ev(It,'A')], ['Potencia total', ...ev(Pt,'W')]];
+  if(R.length>1) R.forEach((r,i)=> respuesta.push([`R${i+1} = ${es(r,'Ω')}`, `${es(Vi[i],'V')} y ${es(Ii[i],'A')}`, `P = ${es(Pi[i],'W')}`]));
+  const Vs = lin(0, 1.5*V, 40);
+  return {
+    titulo:'Corriente continua y circuitos', 
+    datos:[...R.map((r,i)=>[`Resistencia R${R.length>1?i+1:''}`, ...ev(r,'Ω')]), ['Voltaje de la fuente', ...ev(V,'V')], ['Conexión', {ser:'Serie',par:'Paralelo',mix:'Mixto',uno:'Una resistencia'}[modo], '']],
+    pasos, respuesta,
+    graficos:[
+      graf('Ley de Ohm del circuito',['V','V'],['I','A'],[{name:'I = V/Req', pts:Vs.map(v=>[v,v/Req])},{name:'Punto de trabajo', pts:[[V,It]], line:false, dots:true}]),
+      graf('Potencia disipada por resistencia',['R','Ω'],['P','W'],[{name:'Pᵢ de cada R', pts:R.map((r,i)=>[r,Pi[i]]), line:false, dots:true}])
     ],
     notas
   };
 }
 
-function sResorte(n){
-  if(!n.kg.length || !n.k.length) return {error:'Indica la masa y la constante del resorte, por ejemplo: "Masa de 0.5 kg en un resorte de 20 N/m con amplitud de 8 cm".'};
-  const m = n.kg[0], k = n.k[0];
-  const A = n.cm.length ? n.cm[0]/100 : n.m.length ? n.m[0] : 0.1;
-  const w = Math.sqrt(k/m), T = 2*Math.PI/w, E = .5*k*A*A;
-  const ts = lin(0, 2*T, 140);
-  const notas = ['Sin fricción: la energía mecánica total se conserva.'];
-  if(!n.cm.length && !n.m.length) notas.push('No indicaste la amplitud; supuse A = 0.10 m.');
+function sMag(n,low){
+  const B = n.B, I = n.I[0], N = n.N[0], d = n.d[0], A = n.A[0], q = n.Q[0], v = n.v[0], th = n.deg[0];
+  if(/induc|faraday|\bfem\b|flujo|generador|lenz|espira/.test(low) || (A>0 && B.length)){
+    const Nn = N ?? 1, notas = ['Se supone el campo perpendicular al plano de la espira.'];
+    if(!B.length || !(A>0)) return {error:'Indica el campo B, el área de la espira y el tiempo (o la frecuencia), por ejemplo: "Una espira de 200 vueltas y 0.02 m² está en un campo magnético que baja de 0.5 T a 0 T en 0.1 s".'};
+    const datos = [['Número de vueltas N', String(Nn), ''], ['Área A', nf(A), 'm²']];
+    if(n.f.length){
+      const f = n.f[0], w = 2*Math.PI*f, B0 = B[0], em = Nn*B0*A*w, T = 1/f, ts = lin(0, 2*T, 160);
+      datos.push(['Campo B', ...ev(B0,'T')], ['Frecuencia f', ...ev(f,'Hz')]);
+      return {
+        titulo:'Generador: espira que gira en un campo magnético', datos,
+        pasos:[`Flujo: Φ(t) = B·A·cos(ωt), con ω = 2πf = ${nf(w)} rad/s.`, `Ley de Faraday: ε(t) = −N·dΦ/dt = N·B·A·ω·sen(ωt).`, `FEM máxima: ε<sub>máx</sub> = NBAω = ${es(em,'V')};  valor eficaz: ε<sub>rms</sub> = ε<sub>máx</sub>/√2 = ${es(em/Math.SQRT2,'V')}.`],
+        respuesta:[['FEM máxima', ...ev(em,'V')], ['FEM eficaz', ...ev(em/Math.SQRT2,'V')], ['Período T', ...ev(T,'s')], ['Flujo máximo', ...ev(B0*A,'Wb')]],
+        graficos:[graf('Flujo magnético',['t','s'],['Φ','Wb'],[{name:'Φ(t)', pts:ts.map(t=>[t,B0*A*Math.cos(w*t)])}]), graf('FEM inducida',['t','s'],['ε','V'],[{name:'ε(t)', pts:ts.map(t=>[t,em*Math.sin(w*t)])}])],
+        notas
+      };
+    }
+    const dt = n.t[0];
+    if(!(dt>0)) return {error:'Indica en cuánto tiempo cambia el campo (por ejemplo "en 0.1 s") o la frecuencia de giro (por ejemplo "a 60 Hz").'};
+    const B1 = B[0], B2 = B.length>1 ? B[1] : 0, dPhi = A*(B2-B1), eps = Nn*Math.abs(dPhi)/dt, Rr = n.R[0];
+    datos.push(['Campo inicial B₁', ...ev(B1,'T')], ['Campo final B₂', ...ev(B2,'T')], ['Intervalo Δt', ...ev(dt,'s')]);
+    if(B.length<2) notas.push('Indicaste un solo campo; supuse que disminuye hasta 0.');
+    const respuesta = [['Cambio de flujo ΔΦ', ...ev(dPhi,'Wb')], ['FEM inducida ε', ...ev(eps,'V')]];
+    const pasos = [`Flujo inicial: Φ₁ = B₁A = ${es(B1*A,'Wb')};  final: Φ₂ = B₂A = ${es(B2*A,'Wb')};  ΔΦ = ${es(dPhi,'Wb')}.`, `Ley de Faraday: ε = −N·ΔΦ/Δt = ${nf(Nn)}·${es(Math.abs(dPhi),'Wb')}/${es(dt,'s')} = ${es(eps,'V')}.`, `El signo negativo (ley de Lenz) indica que la corriente inducida se opone a la variación del flujo.`];
+    if(Rr>0){ pasos.push(`Con R = ${es(Rr,'Ω')}: I = ε/R = ${es(eps/Rr,'A')}.`); respuesta.push(['Corriente inducida', ...ev(eps/Rr,'A')]); datos.push(['Resistencia R', ...ev(Rr,'Ω')]); }
+    const ts = lin(0, dt, 30);
+    return {
+      titulo:'Inducción electromagnética (ley de Faraday)', datos, pasos, respuesta,
+      graficos:[graf('Flujo magnético',['t','s'],['Φ','Wb'],[{name:'Φ(t)', pts:ts.map(t=>[t,A*(B1+(B2-B1)*t/dt)])}]), graf('FEM inducida',['t','s'],['ε','V'],[{name:'ε(t) constante', pts:ts.map(t=>[t,eps])}])],
+      notas
+    };
+  }
+  if(/solenoide|bobina/.test(low)){
+    if(!(N>0) || !(d>0) || !(I>0)) return {error:'Para un solenoide indica vueltas, longitud y corriente, por ejemplo: "Un solenoide de 500 vueltas y 20 cm de longitud con una corriente de 2 A".'};
+    const Bs = MU0*N*I/d;
+    return {
+      titulo:'Campo magnético de un solenoide',
+      datos:[['Número de vueltas N', String(N), ''], ['Longitud L', ...ev(d,'m')], ['Corriente I', ...ev(I,'A')], ['Permeabilidad μ₀', '4π×10⁻⁷', 'T·m/A']],
+      pasos:[`Densidad de vueltas: n = N/L = ${nf(N/d)} vueltas/m.`, `Campo en el interior: B = μ₀·n·I = (4π×10⁻⁷)(${nf(N/d)})(${nf(I)}) = ${es(Bs,'T')}.`],
+      respuesta:[['Campo magnético B', ...ev(Bs,'T')], ['Vueltas por metro n', nf(N/d), 'vueltas/m']],
+      graficos:[graf('Campo en función de la corriente',['I','A'],['B','T'],[{name:'B(I)', pts:lin(0,2*I,40).map(x=>[x,MU0*N*x/d])},{name:'Valor calculado', pts:[[I,Bs]], line:false, dots:true}]), graf('Campo en función de la longitud',['L','m'],['B','T'],[{name:'B(L)', pts:lin(d*.5,d*2,40).map(x=>[x,MU0*N*I/x])},{name:'Valor calculado', pts:[[d,Bs]], line:false, dots:true}])],
+      notas:['Solenoide largo e ideal, con núcleo de aire.']
+    };
+  }
+  if(/alambre|conductor|cable|recto|hilo/.test(low)){
+    if(!(I>0) || !(d>0)) return {error:'Para un conductor recto indica la corriente y la distancia, por ejemplo: "Un alambre recto con 10 A de corriente; calcula el campo a 5 cm".'};
+    const Bw = MU0*I/(2*Math.PI*d);
+    return {
+      titulo:'Campo magnético de un conductor recto',
+      datos:[['Corriente I', ...ev(I,'A')], ['Distancia r', ...ev(d,'m')], ['Permeabilidad μ₀', '4π×10⁻⁷', 'T·m/A']],
+      pasos:[`Ley de Ampère: B = μ₀I/(2πr) = (4π×10⁻⁷)(${nf(I)})/(2π·${nf(d)}) = ${es(Bw,'T')}.`, `Las líneas de campo son círculos alrededor del conductor (regla de la mano derecha).`],
+      respuesta:[['Campo magnético B', ...ev(Bw,'T')]],
+      graficos:[graf('Campo en función de la distancia',['r','m'],['B','T'],[{name:'B(r)', pts:lin(d*.3,d*4,60).map(x=>[x,MU0*I/(2*Math.PI*x)])},{name:'Valor calculado', pts:[[d,Bw]], line:false, dots:true}]), graf('Campo en función de la corriente',['I','A'],['B','T'],[{name:'B(I)', pts:lin(0,2*I,40).map(x=>[x,MU0*x/(2*Math.PI*d)])},{name:'Valor calculado', pts:[[I,Bw]], line:false, dots:true}])],
+      notas:['Conductor recto muy largo.']
+    };
+  }
+  if(q!==undefined && v!==undefined && B.length){
+    const Bf = B[0], ang = th ?? 90, F = Math.abs(q)*v*Bf*Math.sin(toRad(ang)), notas = [];
+    if(th===undefined) notas.push('No indicaste el ángulo entre v y B; supuse 90°.');
+    const datos = [['Carga q', ...ev(q,'C')], ['Velocidad v', nf(v), 'm/s'], ['Campo B', ...ev(Bf,'T')], ['Ángulo θ', nf(ang), '°']];
+    const pasos = [`Fuerza de Lorentz: F = |q|·v·B·senθ = ${nf(Math.abs(q))}·${nf(v)}·${nf(Bf)}·sen(${nf(ang)}°) = ${es(F,'N')}.`, `La fuerza es perpendicular a v y a B, así que no cambia la rapidez de la partícula.`];
+    const respuesta = [['Fuerza magnética F', ...ev(F,'N')]], graficos = [graf('Fuerza en función del ángulo',['θ','°'],['F','N'],[{name:'F(θ)', pts:lin(0,180,90).map(a=>[a,Math.abs(q)*v*Bf*Math.sin(toRad(a))])},{name:'Valor calculado', pts:[[ang,F]], line:false, dots:true}])];
+    const m = n.M[0];
+    if(m>0 && F>0){
+      const vp = v*Math.sin(toRad(ang)), rad = m*vp/(Math.abs(q)*Bf), T = 2*Math.PI*m/(Math.abs(q)*Bf);
+      datos.push(['Masa m', nf(m), 'kg']);
+      pasos.push(`Radio de la trayectoria circular: r = m·v⊥/(|q|B) = ${es(rad,'m')};  período: T = 2πm/(|q|B) = ${es(T,'s')}.`);
+      respuesta.push(['Radio r', ...ev(rad,'m')], ['Período T', ...ev(T,'s')], ['Frecuencia de ciclotrón', ...ev(1/T,'Hz')]);
+      graficos.push(graf('Trayectoria de la partícula (plano ⟂ a B)',['x','m'],['y','m'],[{name:'Trayectoria', pts:lin(0,2*Math.PI,100).map(a=>[rad*Math.cos(a),rad*Math.sin(a)])}]));
+    }
+    return {titulo:'Fuerza de Lorentz', datos, pasos, respuesta, graficos, notas};
+  }
+  return {error:'No reconocí el caso. Prueba con inducción (espira, B, área, tiempo), solenoide (vueltas, longitud, corriente), conductor recto (corriente y distancia) o carga en un campo (q, v, B, ángulo; agrega la masa en kg para el radio).'};
+}
+
+function sCA(n,low,texto){
+  let R = n.R[0] ?? 0, L = n.L[0], C = n.C[0], f = n.f[0], V = n.V[0], pico = /pico|m[aá]x|amplitud/.test(low);
+  const sn = /(\d+(?:[.,]\d+)?)\s*(?:sen|sin)\s*\(\s*(\d+(?:[.,]\d+)?)\s*(π|pi)?\s*t/i.exec(texto), notas = [];
+  if(sn){ V = parseFloat(sn[1].replace(',','.')); pico = true; const c = parseFloat(sn[2].replace(',','.')); f = sn[3] ? c/2 : c/(2*Math.PI); }
+  if(!L && !C) return {error:'Indica al menos una bobina o un capacitor, por ejemplo: "Circuito RLC en serie con R = 100 Ω, L = 0.25 H y C = 50 µF, con una fuente de 120 V a 60 Hz".'};
+  const f0 = (L && C) ? 1/(2*Math.PI*Math.sqrt(L*C)) : null;
+  if(f===undefined){
+    if(f0){ f = f0; notas.push('No indicaste la frecuencia; usé la frecuencia de resonancia.'); }
+    else return {error:'Indica la frecuencia de la fuente, por ejemplo "a 60 Hz".'};
+  }
+  if(V===undefined){ V = 1; pico = false; notas.push('No indicaste el voltaje; supuse 1 V eficaz.'); }
+  const Vr = pico ? V/Math.SQRT2 : V, w = 2*Math.PI*f, XL = L ? w*L : 0, XC = C ? 1/(w*C) : 0, X = XL-XC, Z = Math.hypot(R,X);
+  if(!(Z>0)) return {error:'Con esos datos la impedancia es cero. Agrega una resistencia.'};
+  const I = Vr/Z, ph = Math.atan2(X,R)*180/Math.PI, fp = R/Z, P = I*I*R;
+  const datos = [['Resistencia R', ...ev(R,'Ω')]];
+  if(L) datos.push(['Inductancia L', ...ev(L,'H')]);
+  if(C) datos.push(['Capacitancia C', ...ev(C,'F')]);
+  datos.push(['Frecuencia f', ...ev(f,'Hz')], [pico ? 'Voltaje pico' : 'Voltaje eficaz', ...ev(V,'V')]);
+  const pasos = [`Frecuencia angular: ω = 2πf = ${nf(w)} rad/s;  voltaje eficaz: V<sub>rms</sub> = ${es(Vr,'V')}.`];
+  if(L) pasos.push(`Reactancia inductiva: X<sub>L</sub> = ωL = ${es(XL,'Ω')}.`);
+  if(C) pasos.push(`Reactancia capacitiva: X<sub>C</sub> = 1/(ωC) = ${es(XC,'Ω')}.`);
+  pasos.push(`Impedancia: Z = R + j(X<sub>L</sub> − X<sub>C</sub>);  |Z| = √(R² + X²) = √(${nf(R)}² + ${nf(X)}²) = ${es(Z,'Ω')}.`,
+    `Corriente eficaz: I = V<sub>rms</sub>/|Z| = ${es(I,'A')};  fase: φ = arctan(X/R) = ${nf(ph)}°.`,
+    `Factor de potencia: cosφ = R/|Z| = ${nf(fp)};  potencia real: P = I²R = ${es(P,'W')}.`);
+  const respuesta = [];
+  if(L) respuesta.push(['Reactancia inductiva X_L', ...ev(XL,'Ω')]);
+  if(C) respuesta.push(['Reactancia capacitiva X_C', ...ev(XC,'Ω')]);
+  respuesta.push(['Impedancia |Z|', ...ev(Z,'Ω')], ['Corriente eficaz I', ...ev(I,'A')], ['Ángulo de fase φ', nf(ph), Math.abs(ph)<0.05 ? '° (resonancia)' : ph>0 ? '° (circuito inductivo: la corriente se atrasa)' : '° (circuito capacitivo: la corriente se adelanta)'], ['Factor de potencia', nf(fp), ''], ['Potencia real P', ...ev(P,'W')]);
+  if(R>0) respuesta.push(['Voltaje eficaz en R', ...ev(I*R,'V')]);
+  if(L) respuesta.push(['Voltaje eficaz en L', ...ev(I*XL,'V')]);
+  if(C) respuesta.push(['Voltaje eficaz en C', ...ev(I*XC,'V')]);
+  if(f0){
+    pasos.push(`Resonancia: f₀ = 1/(2π√(LC)) = ${es(f0,'Hz')}.` + (R>0 ? `  Factor de calidad: Q = (1/R)√(L/C) = ${nf(Math.sqrt(L/C)/R)};  ancho de banda: BW = f₀/Q = ${es(f0*R/Math.sqrt(L/C),'Hz')}.` : ''));
+    respuesta.push(['Frecuencia de resonancia f₀', ...ev(f0,'Hz')]);
+    if(R>0) respuesta.push(['Factor de calidad Q', nf(Math.sqrt(L/C)/R), ''], ['Ancho de banda', ...ev(f0*R/Math.sqrt(L/C),'Hz')]);
+  }
+  const Zf = ff=>{ const ww = 2*Math.PI*ff; return Math.max(Math.hypot(R,(L?ww*L:0)-(C?1/(ww*C):0)), 1e-6); };
+  const fs = f0 ? lin(f0*.2, f0*3, 200) : lin(f*.1, f*3, 150);
   return {
-    titulo: 'Sistema masa-resorte (MAS)',
-    datos: [['Masa m', nf(m), 'kg'], ['Constante k', nf(k), 'N/m'], ['Amplitud A', nf(A), 'm']],
-    pasos: [
-      `Frecuencia angular: ω = √(k/m) = √(${nf(k)}/${nf(m)}) = ${nf(w)} rad/s.`,
-      `Período: T = 2π/ω = ${nf(T)} s;  frecuencia: f = ${nf(1/T)} Hz.`,
-      `Velocidad máxima: v<sub>máx</sub> = Aω = ${nf(A*w)} m/s;  aceleración máxima: a<sub>máx</sub> = Aω² = ${nf(A*w*w)} m/s².`,
-      `Energía total: E = ½kA² = ${nf(E)} J.`
+    titulo: L&&C ? 'Circuito RLC en serie (corriente alterna)' : L ? 'Circuito RL en serie (corriente alterna)' : 'Circuito RC en serie (corriente alterna)',
+    datos, pasos, respuesta,
+    graficos:[
+      graf('Impedancia en función de la frecuencia',['f','Hz'],['|Z|','Ω'],[{name:'|Z|(f)', pts:fs.map(x=>[x,Zf(x)])},{name:'Frecuencia de la fuente', pts:[[f,Z]], line:false, dots:true}]),
+      graf('Corriente eficaz en función de la frecuencia',['f','Hz'],['I','A'],[{name:'I(f)', pts:fs.map(x=>[x,Vr/Zf(x)])},{name:'Frecuencia de la fuente', pts:[[f,I]], line:false, dots:true}])
     ],
-    respuesta: [['Período T', nf(T), 's'], ['Frecuencia f', nf(1/T), 'Hz'], ['Frecuencia angular ω', nf(w), 'rad/s'], ['Velocidad máxima', nf(A*w), 'm/s'], ['Energía total', nf(E), 'J']],
-    graficos: [
-      {titulo:'Posición en función del tiempo', xlabel:'t (s)', ylabel:'x (m)', series:[{name:'x(t)', pts: ts.map(t=>[t, A*Math.cos(w*t)])}]},
-      {titulo:'Energía en función del tiempo', xlabel:'t (s)', ylabel:'E (J)', series:[
-        {name:'Cinética', pts: ts.map(t=>[t, .5*m*Math.pow(A*w*Math.sin(w*t),2)])},
-        {name:'Potencial', pts: ts.map(t=>[t, .5*k*Math.pow(A*Math.cos(w*t),2)])},
-        {name:'Total', pts: ts.map(t=>[t, E])}]}
-    ],
-    notas
+    notas:[...notas, 'Circuito en serie con fuente senoidal; se usan valores eficaces (rms).']
   };
+}
+
+function sDiodo(n,low,texto){
+  if(/zener/.test(low)){
+    const Vz = tras(n,texto,'zener|\\bvz\\b','V'), Vin = tras(n,texto,'fuente|entrada|\\bvin\\b|alimentaci','V'), Rs = tras(n,texto,'serie|\\brs\\b','R'), RL = tras(n,texto,'carga|\\brl\\b','R');
+    if([Vz,Vin,Rs,RL].some(x=>!(x>0))) return {error:'Para un regulador Zener indica el voltaje Zener, la fuente, la resistencia en serie y la carga, por ejemplo: "Regulador Zener de 5.1 V con fuente de 12 V, resistencia en serie de 220 Ω y carga de 1 kΩ".'};
+    const Is = (Vin-Vz)/Rs, IL = Vz/RL, Iz = Is-IL, reg = Vin>Vz && Iz>0, Vo = reg ? Vz : Vin*RL/(Rs+RL);
+    const pasos = [`Si el Zener conduce, el voltaje de salida es V<sub>o</sub> = V<sub>Z</sub> = ${es(Vz,'V')}.`, `Corriente por R<sub>s</sub>: I<sub>s</sub> = (V<sub>in</sub> − V<sub>Z</sub>)/R<sub>s</sub> = ${es(Is,'A')}.`, `Corriente por la carga: I<sub>L</sub> = V<sub>Z</sub>/R<sub>L</sub> = ${es(IL,'A')}.`, `Corriente por el Zener: I<sub>Z</sub> = I<sub>s</sub> − I<sub>L</sub> = ${es(Iz,'A')}.`];
+    const respuesta = [['Regulación', reg ? 'Regula correctamente' : 'No regula (el Zener no conduce)', ''], ['Voltaje de salida Vₒ', ...ev(Vo,'V')], ['Corriente por R_s', ...ev(Is,'A')], ['Corriente por la carga', ...ev(IL,'A')]];
+    if(reg) respuesta.push(['Corriente por el Zener', ...ev(Iz,'A')], ['Potencia en el Zener', ...ev(Vz*Iz,'W')]);
+    else pasos.push(`Como I<sub>Z</sub> ≤ 0, el Zener no conduce y el circuito es un divisor: V<sub>o</sub> = V<sub>in</sub>R<sub>L</sub>/(R<sub>s</sub> + R<sub>L</sub>) = ${es(Vo,'V')}.`);
+    return {
+      titulo:'Regulador de voltaje con diodo Zener',
+      datos:[['Voltaje Zener V_Z', ...ev(Vz,'V')], ['Voltaje de entrada', ...ev(Vin,'V')], ['Resistencia en serie R_s', ...ev(Rs,'Ω')], ['Resistencia de carga R_L', ...ev(RL,'Ω')]],
+      pasos, respuesta,
+      graficos:[
+        graf('Voltaje de salida según la entrada',['V_in','V'],['V_o','V'],[{name:'V_o(V_in)', pts:lin(0,2*Vin,80).map(x=>[x,Math.min(x*RL/(Rs+RL),Vz)])},{name:'Punto de trabajo', pts:[[Vin,Vo]], line:false, dots:true}]),
+        graf('Corriente del Zener según la carga',['R_L','Ω'],['I_Z','A'],[{name:'I_Z(R_L)', pts:lin(RL*.2,RL*4,80).map(x=>[x,Math.max(Is-Vz/x,0)])},{name:'Punto de trabajo', pts:[[RL,Math.max(Iz,0)]], line:false, dots:true}])
+      ],
+      notas:['Zener ideal (sin resistencia dinámica). Si la carga es muy pequeña, el Zener deja de regular.']
+    };
+  }
+  const media = /media onda/.test(low), puente = /puente/.test(low);
+  let Vp = n.V[0];
+  if(!(Vp>0)) return {error:'Indica el voltaje de la fuente, por ejemplo: "Rectificador de onda completa con puente de diodos, fuente de 12 V rms, 60 Hz, carga de 100 Ω y filtro de 470 µF".'};
+  const rms = /rms|eficaz/.test(low); if(rms) Vp *= Math.SQRT2;
+  const notas = ['Modelo del diodo con caída constante de 0.7 V (silicio).'], f = n.f.length ? n.f[0] : 60;
+  if(!n.f.length) notas.push('No indicaste la frecuencia; supuse 60 Hz.');
+  const RL = tras(n,texto,'carga|resistencia|\\brl\\b','R') ?? n.R[0], Cf = n.C[0];
+  if(Cf && !(RL>0)) return {error:'Para el filtro con capacitor indica también la resistencia de carga, por ejemplo "carga de 100 Ω".'};
+  const Vd = (media||!puente) ? 0.7 : 1.4, Vpo = Vp-Vd;
+  if(!(Vpo>0)) return {error:'El voltaje de entrada es menor que la caída de los diodos.'};
+  const fr = media ? f : 2*f, Vdc0 = media ? Vpo/Math.PI : 2*Vpo/Math.PI;
+  const datos = [['Voltaje pico de entrada V_p', ...ev(Vp,'V')], ['Frecuencia f', ...ev(f,'Hz')], ['Tipo', media ? 'Media onda' : puente ? 'Onda completa (puente)' : 'Onda completa', '']];
+  if(RL>0) datos.push(['Resistencia de carga', ...ev(RL,'Ω')]);
+  if(Cf) datos.push(['Capacitor de filtro', ...ev(Cf,'F')]);
+  const pasos = [`${rms ? `Voltaje pico: V<sub>p</sub> = V<sub>rms</sub>·√2 = ${es(Vp,'V')}. ` : ''}Caída en el diodo: ${puente&&!media ? '2 × 0.7 V' : '0.7 V'} → pico de salida V<sub>p,o</sub> = V<sub>p</sub> − V<sub>D</sub> = ${es(Vpo,'V')}.`,
+    `Sin filtro: V<sub>dc</sub> = ${media ? 'V<sub>p,o</sub>/π' : '2V<sub>p,o</sub>/π'} = ${es(Vdc0,'V')}.`];
+  const respuesta = [['Pico de salida V_p,o', ...ev(Vpo,'V')], ['V_dc sin filtro', ...ev(Vdc0,'V')]];
+  const T = 1/f, ts = lin(0, 3*T, 361), dt = ts[1]-ts[0];
+  const rect = t=>{ const s = Math.sin(2*Math.PI*f*t); return Math.max(0, (media ? s : Math.abs(s))*Vp - Vd); };
+  const graficos = [graf('Entrada y salida rectificada',['t','s'],['v','V'],[{name:'Entrada', pts:ts.map(t=>[t,Vp*Math.sin(2*Math.PI*f*t)])},{name:'Salida sin filtro', pts:ts.map(t=>[t,rect(t)])}])];
+  if(Cf && RL>0){
+    const dV = Math.min(Vpo/(fr*RL*Cf), Vpo), Vdc = Vpo-dV/2, Vr = dV/(2*Math.sqrt(3));
+    pasos.push(`Frecuencia de rizado: f<sub>r</sub> = ${media ? 'f' : '2f'} = ${es(fr,'Hz')}.`, `Rizado pico a pico: ΔV ≈ V<sub>p,o</sub>/(f<sub>r</sub>·R·C) = ${es(dV,'V')}.`, `Con filtro: V<sub>dc</sub> ≈ V<sub>p,o</sub> − ΔV/2 = ${es(Vdc,'V')};  rizado eficaz: V<sub>r</sub> = ΔV/(2√3) = ${es(Vr,'V')}  (${nf(100*Vr/Vdc)} % de V<sub>dc</sub>).`, `Corriente en la carga: I<sub>dc</sub> = V<sub>dc</sub>/R<sub>L</sub> = ${es(Vdc/RL,'A')}.`);
+    respuesta.push(['Rizado pico a pico ΔV', ...ev(dV,'V')], ['V_dc con filtro', ...ev(Vdc,'V')], ['Rizado eficaz V_r', ...ev(Vr,'V')], ['Porcentaje de rizado', nf(100*Vr/Vdc), '%'], ['Corriente en la carga', ...ev(Vdc/RL,'A')]);
+    let v = 0;
+    const filt = ts.map(t=>{ const vi = rect(t); if(vi>v) v = vi; else v *= Math.exp(-dt/(RL*Cf)); return [t,v]; });
+    graficos.push(graf('Salida con filtro de capacitor',['t','s'],['v','V'],[{name:'Rectificada', pts:ts.map(t=>[t,rect(t)])},{name:'Con filtro C', pts:filt}]));
+    notas.push('Aproximación de rizado pequeño: válida cuando ΔV es mucho menor que V_p,o.');
+  }
+  return {titulo: media ? 'Rectificador de media onda' : 'Rectificador de onda completa', datos, pasos, respuesta, graficos, notas};
 }
 
 function sDatos(n, low, texto){
@@ -620,9 +804,9 @@ function sDatos(n, low, texto){
 }
 
 function resolverLocal(texto){
-  const low = texto.toLowerCase(), n = leerNumeros(texto);
-  const f = {datos:sDatos, pendulo:sPendulo, resorte:sResorte, proyectil:sProyectil, vertical:sVertical, mrua:sMrua}[detectar(low)];
-  if(!f) return {error:'No reconocí el tipo de problema. Prueba con tiro parabólico, lanzamiento vertical o caída libre, MRUA (un auto que acelera), péndulo simple, masa-resorte, o pega datos como "x: 1, 2, 3; y: 2, 4, 6".'};
+  const low = texto.toLowerCase(), n = leer(texto);
+  const f = {datos:sDatos, est:sEst, cap:sCap, rc:sRC, dc:sDC, mag:sMag, ca:sCA, diodo:sDiodo}[detectar(low,n)];
+  if(!f) return {error:'No reconocí el tipo de problema. Prueba con electrostática (cargas y distancia), capacitores (C, V, serie o paralelo), corriente continua (R y V), magnetismo e inducción (B, I, vueltas, área, tiempo), corriente alterna RLC (R, L, C, f, V), diodos (rectificador o Zener), o pega datos como "x: 1, 2, 3; y: 2, 4, 6".'};
   return f(n, low, texto);
 }
 
@@ -701,12 +885,12 @@ async function enviarProblema(q){
   }
 }
 const EJEMPLOS = [
-  ['Tiro parabólico', 'Un proyectil sale a 30 m/s con un ángulo de 40° desde el suelo. Calcula el alcance y la altura máxima.'],
-  ['Lanzamiento vertical', 'Se lanza una pelota verticalmente hacia arriba a 18 m/s desde una altura de 2 m.'],
-  ['MRUA', 'Un auto parte del reposo con aceleración de 2.5 m/s² durante 12 s.'],
-  ['Péndulo', 'Péndulo simple de longitud 1.2 m con amplitud de 8°.'],
-  ['Masa-resorte', 'Una masa de 0.5 kg unida a un resorte de 20 N/m oscila con amplitud de 8 cm.'],
-  ['Regresión lineal', 'Datos experimentales: x: 1, 2, 3, 4, 5, 6; y: 2.1, 3.9, 6.2, 7.8, 10.1, 12.2']
+  ['Electrostática', 'Dos cargas de 4 µC y -6 µC están separadas 0.30 m. Calcula la fuerza, el campo y el potencial.'],
+  ['Capacitancia y condensadores', 'Tres capacitores de 10 µF, 22 µF y 47 µF se conectan en serie a una fuente de 12 V.'],
+  ['Corriente continua y circuitos', 'Tres resistencias de 100 Ω, 220 Ω y 330 Ω están en serie con una fuente de 12 V.'],
+  ['Magnetismo e inducción', 'Una espira de 200 vueltas y 0.02 m² de área está en un campo magnético que baja de 0.5 T a 0 T en 0.1 s. La resistencia es 5 Ω.'],
+  ['Corriente alterna y RLC', 'Circuito RLC en serie con R = 100 Ω, L = 0.25 H y C = 50 µF, alimentado con una fuente de 170 sen(120πt) V.'],
+  ['Diodos', 'Rectificador de onda completa con puente de diodos, fuente de 12 V rms, 60 Hz, carga de 100 Ω y filtro de 470 µF.']
 ];
 EJEMPLOS.forEach(([etq, q])=>{
   const b = document.createElement('button');
@@ -714,7 +898,7 @@ EJEMPLOS.forEach(([etq, q])=>{
   b.addEventListener('click', ()=> enviarProblema(q));
   document.getElementById('chips').appendChild(b);
 });
-aMsg('¡Hola! Describe un problema de física (cinemática, péndulo, masa-resorte) o pega tus datos como "x: 1, 2, 3; y: 2, 4, 6". Te daré el procedimiento, la respuesta y los gráficos. También puedes elegir un ejemplo arriba.', 'bot');
+aMsg('¡Hola! Elige un ejemplo arriba o escribe tu problema con sus datos y unidades. Temas y variables que reconozco:\n• Electrostática: cargas q (µC, nC) y distancia r (m, cm).\n• Capacitancia y condensadores: C (µF, nF), V, serie o paralelo; área y separación de placas; carga o descarga RC con R.\n• Corriente continua: R (Ω, kΩ), V, serie, paralelo o mixto.\n• Magnetismo e inducción: B (T, mT), I, vueltas, longitud, área, tiempo; solenoide, conductor recto, fuerza de Lorentz (q, v, B, ángulo).\n• Corriente alterna: R, L (mH), C (µF), f (Hz), V (rms o pico).\n• Diodos: rectificador (media onda u onda completa, V, f, carga, filtro) y regulador Zener (V_Z, fuente, R_s, carga).\nTambién puedes pegar datos como "x: 1, 2, 3; y: 2, 4, 6" para una regresión lineal. Te daré el procedimiento, la respuesta y los gráficos.', 'bot');
 document.getElementById('aform').addEventListener('submit', e=>{
   e.preventDefault();
   const inp = document.getElementById('ainput'), q = inp.value.trim();
