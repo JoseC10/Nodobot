@@ -45,6 +45,7 @@ h2.page{margin:0 0 1rem;font-size:1.5rem;font-weight:600;color:var(--blue)}
 .msg{max-width:85%;padding:.55rem .8rem;border-radius:14px;white-space:pre-wrap}
 .msg.bot{background:#fff;border:1px solid var(--line);align-self:flex-start}
 .msg.user{background:var(--bar);color:#fff;align-self:flex-end}
+#difyframe{display:none;width:100%;height:600px;border:1px solid var(--line);border-radius:12px;background:#fff}
 #chatform{display:flex;gap:.5rem;margin-top:.75rem}
 #chatform input,#aform input{flex:1;min-width:0;padding:.65rem .8rem;border:1px solid var(--line);border-radius:12px;background:#fff}
 #aform{display:flex;gap:.5rem;margin-top:.75rem}
@@ -171,6 +172,7 @@ figure.ch svg{width:100%;height:auto;display:block}
     <div class="panel">
       <h2 class="page">Nodobot IA</h2>
       <p class="sub">Pregunta sobre cualquier tema del curso.</p>
+      <iframe id="difyframe" title="Nodobot IA" allow="microphone" loading="lazy"></iframe>
       <div id="chatlog" role="log" aria-live="polite"></div>
       <form id="chatform" autocomplete="off">
         <input id="chatinput" type="text" placeholder="Escribe tu pregunta" aria-label="Tu pregunta">
@@ -349,6 +351,20 @@ document.getElementById('chatform').addEventListener('submit', async e=>{
     t.remove(); addMsg('No pude responder en este momento. Intenta de nuevo.','bot');
   }
 });
+
+/* ---------- NODOBOT IA (chatbot de Dify) ----------
+   Pega aquí la dirección pública del chatbot de Dify, que se ve así:
+   https://udify.app/chatbot/XXXXXXXXXXXX
+   (en Dify: Publicar > Insertar en el sitio, dentro del código iframe está en src="...").
+   Mientras esté vacío se muestra el chat de prueba. */
+const DIFY_CHAT_URL = 'https://udify.app/chatbot/nranSmloCKfM47BQ';
+if(DIFY_CHAT_URL){
+  const fr = document.getElementById('difyframe');
+  fr.src = DIFY_CHAT_URL;
+  fr.style.display = 'block';
+  document.getElementById('chatlog').style.display = 'none';
+  document.getElementById('chatform').style.display = 'none';
+}
 
 /* ---------- ANÁLISIS EXPERIMENTAL ----------
    Resuelve el problema en el navegador (sin servidor) y dibuja las gráficas en SVG.
