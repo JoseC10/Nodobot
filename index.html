@@ -198,6 +198,7 @@ figure.ch svg{width:100%;height:auto;display:block}
       <h2 class="page">Análisis experimental</h2>
       <p class="sub">Describe un problema o pega tus datos: Nodobot lo resuelve paso a paso y dibuja los gráficos.</p>
       <div class="chips" id="chips" aria-label="Ejemplos"></div>
+      <p class="sub" style="margin:.6rem 0 .8rem;font-size:.9rem">Toca un tema para cargar una plantilla (vuelve a tocarlo para ver otros casos), cambia los números por tus datos y presiona Resolver.</p>
       <div id="alog" role="log" aria-live="polite"></div>
       <form id="aform" autocomplete="off">
         <input id="ainput" type="text" placeholder="Escribe el problema o pega tus datos (x: 1, 2, 3; y: 2, 4, 6)" aria-label="Problema o datos">
@@ -270,21 +271,39 @@ semanas.forEach((n,i)=>{
   slides.appendChild(a);
 });
 
-/* ---------- FÓRMULAS (archivos descargables) ----------
-   Guarda los archivos en la carpeta "formularios" con los nombres
-   formulario-1.pdf, formulario-2.pdf, etc.
-   Cambia formExt si usarán otro formato y formTotal según la cantidad. */
-const formExt = 'pdf';
-const formTotal = 5;
+/* ---------- FÓRMULAS (formularios descargables) ----------
+   Los archivos están en la misma carpeta que este archivo (la raíz del repositorio)
+   con sus nombres originales: Resumen_1.jpg ... Resumen_17.jpg.
+   Para cambiar el tema de una tarjeta, edita su texto en la lista. */
+const formularios = [
+  'Análisis dimensional y vectores',
+  'Vectores, cinemática y MRU',
+  'MRUV y caída libre',
+  'Movimiento parabólico y circular',
+  'Dinámica y leyes de Newton',
+  'Estática y momento de fuerzas',
+  'Trabajo, energía y potencia',
+  'Cantidad de movimiento, choques y gravitación',
+  'Hidrostática e hidrodinámica',
+  'Calorimetría y dilatación térmica',
+  'Electrostática (resumen)',
+  'Electrostática (formulario)',
+  'Electrodinámica y circuitos',
+  'Kirchhoff, Biot-Savart y electromagnetismo',
+  'Kirchhoff, Biot-Savart y electromagnetismo',
+  'Fuerza magnética sobre cargas y conductores',
+  'Inducción electromagnética'
+];
 const forms = document.getElementById('forms');
-for(let i=1;i<=formTotal;i++){
-  const a = document.createElement('a');
-  a.href = `formularios/formulario-${i}.${formExt}`;
+formularios.forEach((tema,i)=>{
+  const n = i+1, a = document.createElement('a');
+  a.href = `Resumen_${n}.jpg`;
   a.setAttribute('download','');
-  a.innerHTML = `<strong>Formulario ${i}</strong><span>Descargar .${formExt}</span>`;
-  a.style.animationDelay = `${(i-1)*35}ms`;
+  a.title = `Descargar Formulario ${n}: ${tema}`;
+  a.innerHTML = `<strong>Formulario ${n}</strong><span>${tema}</span>`;
+  a.style.animationDelay = `${i*35}ms`;
   forms.appendChild(a);
-}
+});
 
 /* ---------- CONTADOR DE DESCARGAS (Supabase) ----------
    Pega aquí los dos datos de tu proyecto de Supabase
@@ -884,25 +903,49 @@ async function enviarProblema(q){
     t.remove(); aMsg('No pude resolver el problema. Revisa el enunciado e intenta de nuevo.', 'bot');
   }
 }
-const PLANTILLAS = [
-  ['Electrostática', 'Dos cargas de 4 µC y -6 µC están separadas 0.30 m. Calcula la fuerza, el campo y el potencial.'],
-  ['Capacitancia y condensadores', 'Tres capacitores de 10 µF, 22 µF y 47 µF se conectan en serie a una fuente de 12 V.'],
-  ['Corriente continua y circuitos', 'Tres resistencias de 100 Ω, 220 Ω y 330 Ω están en serie con una fuente de 12 V.'],
-  ['Magnetismo e inducción', 'Una espira de 200 vueltas y 0.02 m² de área está en un campo magnético que baja de 0.5 T a 0 T en 0.1 s. La resistencia es 5 Ω.'],
-  ['Corriente alterna y RLC', 'Circuito RLC en serie con R = 100 Ω, L = 0.25 H y C = 50 µF, alimentado con una fuente de 170 sen(120πt) V.'],
-  ['Diodos', 'Rectificador de onda completa con puente de diodos, fuente de 12 V rms, 60 Hz, carga de 100 Ω y filtro de 470 µF.']
+const EJEMPLOS = [
+  ['Electrostática', [
+    ['Dos cargas', 'Dos cargas de 3 µC y -5 µC están separadas 20 cm.', 'Datos: cargas q₁ y q₂ (µC, nC, mC) y distancia r (cm, m). Calcula fuerza, campo, potencial y energía.'],
+    ['Una carga', 'Una carga de 2 nC; calcula el campo y el potencial a 5 cm.', 'Datos: una carga q y la distancia r. Calcula el campo y el potencial.']]],
+  ['Capacitancia y condensadores', [
+    ['Serie', 'Tres capacitores de 10 µF, 22 µF y 47 µF se conectan en serie a una fuente de 12 V.', 'Datos: capacitancias (µF, nF), voltaje V y la palabra "serie". Puedes usar los capacitores que quieras.'],
+    ['Paralelo', 'Dos capacitores de 10 µF y 22 µF en paralelo a 9 V.', 'Datos: capacitancias, voltaje y la palabra "paralelo".'],
+    ['Placas paralelas', 'Capacitor de placas paralelas con área de 0.02 m² y separación de 1 mm conectado a 12 V.', 'Datos: área (m², cm²), separación (mm, m) y voltaje.'],
+    ['Carga RC', 'Un capacitor de 100 µF se carga a través de una resistencia de 10 kΩ con una fuente de 12 V. Calcula en t = 2 s.', 'Datos: C, R, voltaje y, si quieres, un tiempo t. Escribe "descarga" en lugar de "carga" para el otro caso.']]],
+  ['Corriente continua y circuitos', [
+    ['Serie', 'Tres resistencias de 100 Ω, 220 Ω y 330 Ω están en serie con una fuente de 12 V.', 'Datos: resistencias (Ω, kΩ), voltaje y la conexión "serie".'],
+    ['Paralelo', 'Resistencias de 100 Ω, 200 Ω y 300 Ω en paralelo con una fuente de 9 V.', 'Datos: resistencias, voltaje y la conexión "paralelo".'],
+    ['Mixto', 'Resistencias de 100 Ω, 200 Ω y 300 Ω en mixto con una fuente de 9 V. La primera está en serie con las otras dos en paralelo.', 'Datos: la primera resistencia queda en serie con el paralelo de las demás.']]],
+  ['Magnetismo e inducción', [
+    ['Inducción de Faraday', 'Una espira de 200 vueltas y 0.02 m² de área está en un campo magnético que baja de 0.5 T a 0 T en 0.1 s. La resistencia es 5 Ω.', 'Datos: vueltas, área, campo inicial y final (T), tiempo (s) y, si quieres, la resistencia.'],
+    ['Generador', 'Una espira de 100 vueltas y 0.05 m² gira en un campo de 0.2 T a 60 Hz.', 'Datos: vueltas, área, campo B (T) y frecuencia de giro (Hz).'],
+    ['Solenoide', 'Un solenoide de 500 vueltas y 20 cm de longitud con una corriente de 2 A.', 'Datos: vueltas, longitud (cm, m) y corriente (A).'],
+    ['Conductor recto', 'Un alambre recto con 10 A de corriente; calcula el campo a 5 cm.', 'Datos: corriente (A) y distancia (cm, m).'],
+    ['Fuerza de Lorentz', 'Una carga de 2 µC con velocidad de 3000 m/s entra en un campo magnético de 0.4 T a 90°. La masa es 1e-9 kg.', 'Datos: carga (µC), velocidad (m/s), campo (T), ángulo (°) y, si quieres el radio, la masa (kg).']]],
+  ['Corriente alterna y RLC', [
+    ['RLC con fuente senoidal', 'Circuito RLC en serie con R = 100 Ω, L = 0.25 H y C = 50 µF, alimentado con una fuente de 170 sen(120πt) V.', 'Datos: R, L (H, mH), C (µF) y la fuente (por ejemplo 170 sen(120πt) V, o voltaje y frecuencia).'],
+    ['RLC y resonancia', 'Circuito RLC con R = 10 Ω, L = 10 mH y C = 10 µF y fuente de 5 V.', 'Sin indicar la frecuencia, calcula la resonancia, Q y el ancho de banda.'],
+    ['RL', 'Circuito RL con R = 50 Ω y L = 100 mH a 60 Hz y 120 V.', 'Datos: R, L, frecuencia (Hz) y voltaje (V rms; agrega "pico" si es el valor máximo).']]],
+  ['Diodos', [
+    ['Rectificador con filtro', 'Rectificador de onda completa con puente de diodos, fuente de 12 V rms, 60 Hz, carga de 100 Ω y filtro de 470 µF.', 'Datos: voltaje (agrega "rms" o "pico"), frecuencia, carga (Ω) y capacitor de filtro (µF). Escribe "media onda" para ese tipo.'],
+    ['Media onda', 'Rectificador de media onda con fuente de 10 V pico a 60 Hz, carga de 100 Ω y filtro de 220 µF.', 'Mismos datos que el rectificador de onda completa.'],
+    ['Regulador Zener', 'Regulador Zener de 5.1 V con fuente de 12 V, resistencia en serie de 220 Ω y carga de 1 kΩ.', 'Datos: voltaje Zener, fuente, resistencia en serie y carga.']]]
 ];
-PLANTILLAS.forEach(([etq, plantilla])=>{
+EJEMPLOS.forEach(([etq, variantes])=>{
   const b = document.createElement('button');
+  let i = 0;
   b.type = 'button'; b.className = 'chip'; b.textContent = etq;
   b.addEventListener('click', ()=>{
+    const total = variantes.length, [nombre, texto, ayuda] = variantes[i % total];
     const inp = document.getElementById('ainput');
-    inp.value = plantilla;
+    inp.value = texto;
+    aMsg(`${etq} · ${nombre} (plantilla ${i%total+1} de ${total}).\n${ayuda}\nCambia los números por tus datos, mantén las unidades y presiona Resolver.${total>1 ? ' Toca el tema otra vez para ver otro caso.' : ''}`, 'bot');
     inp.focus();
+    i++;
   });
   document.getElementById('chips').appendChild(b);
 });
-aMsg('¡Hola! Para analizar tus propios datos: 1) toca un tema arriba para cargar su plantilla, 2) cambia los números por los tuyos (con sus unidades) y 3) presiona Resolver.\n\nTambién puedes escribir el problema directamente con tus palabras (por ejemplo: "Dos cargas de 3 µC y -5 µC separadas 20 cm") o pegar datos experimentales como "x: 1, 2, 3; y: 2, 4, 6" para obtener una regresión lineal con procedimiento, respuesta y gráficos.', 'bot');
+aMsg('¡Hola! Para analizar tus propios datos: 1) toca un tema, 2) cambia los números de la plantilla por los tuyos (con sus unidades) y 3) presiona Resolver. También puedes escribir el problema con tus palabras, por ejemplo: "Dos cargas de 3 µC y 5 µC separadas 20 cm". Para una regresión lineal pega: x: 1, 2, 3; y: 2, 4, 6.', 'bot');
 document.getElementById('aform').addEventListener('submit', e=>{
   e.preventDefault();
   const inp = document.getElementById('ainput'), q = inp.value.trim();
